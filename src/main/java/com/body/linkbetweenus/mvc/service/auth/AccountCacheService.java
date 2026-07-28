@@ -1,4 +1,4 @@
-package com.body.linkbetweenus.mvc.service;
+package com.body.linkbetweenus.mvc.service.auth;
 
 import com.body.linkbetweenus.mvc.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;

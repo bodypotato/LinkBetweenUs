@@ -4,7 +4,7 @@ import com.body.linkbetweenus.common.Result;
 import com.body.linkbetweenus.dto.LoginRequest;
 import com.body.linkbetweenus.dto.LoginResponse;
 import com.body.linkbetweenus.dto.RegisterRequest;
-import com.body.linkbetweenus.mvc.service.AuthService;
+import com.body.linkbetweenus.mvc.service.auth.IAuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class AuthController {
 
-    private final AuthService authService;
+    private final IAuthService authService;
 
     /**
      * 用户注册
