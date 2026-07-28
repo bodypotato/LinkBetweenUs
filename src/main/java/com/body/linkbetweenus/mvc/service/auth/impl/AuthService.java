@@ -1,4 +1,4 @@
-package com.body.linkbetweenus.mvc.service.impl;
+package com.body.linkbetweenus.mvc.service.auth.impl;
 
 import com.body.linkbetweenus.dto.LoginRequest;
 import com.body.linkbetweenus.dto.LoginResponse;
@@ -6,8 +6,8 @@ import com.body.linkbetweenus.dto.RegisterRequest;
 import com.body.linkbetweenus.dto.UserCacheVo;
 import com.body.linkbetweenus.entity.User;
 import com.body.linkbetweenus.mvc.mapper.UserMapper;
-import com.body.linkbetweenus.mvc.service.AccountCacheService;
-import com.body.linkbetweenus.mvc.service.AuthService;
+import com.body.linkbetweenus.mvc.service.auth.AccountCacheService;
+import com.body.linkbetweenus.mvc.service.auth.IAuthService;
 import com.body.linkbetweenus.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -19,7 +19,7 @@ import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
-public class AuthServiceImpl implements AuthService {
+public class AuthService implements IAuthService {
 
     private static final String USER_CACHE_PREFIX = "user:cache:";
     private static final Duration CACHE_TTL = Duration.ofHours(24);

@@ -1,10 +1,10 @@
-package com.body.linkbetweenus.mvc.service;
+package com.body.linkbetweenus.mvc.service.auth;
 
 import com.body.linkbetweenus.dto.LoginRequest;
 import com.body.linkbetweenus.dto.LoginResponse;
 import com.body.linkbetweenus.dto.RegisterRequest;
 
-public interface AuthService {
+public interface IAuthService {
 
     /**
      * 用户注册
