@@ -3,23 +3,30 @@ package com.body.linkbetweenus.mvc.service.impl;
 import com.body.linkbetweenus.dto.LoginRequest;
 import com.body.linkbetweenus.dto.LoginResponse;
 import com.body.linkbetweenus.dto.RegisterRequest;
+import com.body.linkbetweenus.dto.UserCacheVo;
 import com.body.linkbetweenus.entity.User;
 import com.body.linkbetweenus.mvc.mapper.UserMapper;
 import com.body.linkbetweenus.mvc.service.AuthService;
 import com.body.linkbetweenus.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
+    private static final String USER_CACHE_PREFIX = "user:cache:";
+    private static final Duration CACHE_TTL = Duration.ofHours(24);
+
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final RedisTemplate<String, Object> redisTemplate;
 
     @Override
     public LoginResponse register(RegisterRequest request) {
@@ -40,6 +47,9 @@ public class AuthServiceImpl implements AuthService {
 
         // 生成JWT令牌
         String token = jwtUtil.generateToken(user.getAccount());
+
+        // 将用户信息（不含密码）缓存到Redis
+        cacheUserInfo(user);
 
         return LoginResponse.builder()
                 .account(user.getAccount())
@@ -64,10 +74,21 @@ public class AuthServiceImpl implements AuthService {
         // 生成JWT令牌
         String token = jwtUtil.generateToken(user.getAccount());
 
+        // 将用户信息（不含密码）缓存到Redis
+        cacheUserInfo(user);
+
         return LoginResponse.builder()
                 .account(user.getAccount())
                 .name(user.getName())
                 .token(token)
                 .build();
+    }
+
+    /**
+     * 将用户信息（不含密码）写入Redis缓存
+     */
+    private void cacheUserInfo(User user) {
+        UserCacheVo cacheVo = UserCacheVo.from(user);
+        redisTemplate.opsForValue().set(USER_CACHE_PREFIX + user.getAccount(), cacheVo, CACHE_TTL);
     }
 }

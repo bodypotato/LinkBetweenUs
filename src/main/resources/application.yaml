@@ -1,12 +1,29 @@
 spring:
   application:
     name: LinkBetweenUs
+  config:
+    import: optional:classpath:application-local.yaml
 
   datasource:
     url: jdbc:mysql://localhost:3306/Link_Between_Us?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     driver-class-name: com.mysql.cj.jdbc.Driver
-    username: root
-    password: heyujie3405527
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: ${REDIS_PASSWORD:}
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: 100
+
+  cache:
+    type: redis
 
 mybatis-plus:
   configuration:
@@ -16,18 +33,10 @@ mybatis-plus:
     db-config:
       id-type: input
 
-  data:
-    redis:
-      host: localhost
-      port: 6379
-  cache:
-    type: redis
-
-
 server:
   port: 8080
 
 # JWT配置
 jwt:
-  secret: LinkBetweenUsSecretKeyForJWTTokenGeneration2024PleaseChangeInProduction
+  secret: ${JWT_SECRET:}
   expiration: 86400000  # 24小时，单位毫秒
