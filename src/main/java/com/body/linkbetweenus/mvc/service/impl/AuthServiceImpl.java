@@ -6,6 +6,7 @@ import com.body.linkbetweenus.dto.RegisterRequest;
 import com.body.linkbetweenus.dto.UserCacheVo;
 import com.body.linkbetweenus.entity.User;
 import com.body.linkbetweenus.mvc.mapper.UserMapper;
+import com.body.linkbetweenus.mvc.service.AccountCacheService;
 import com.body.linkbetweenus.mvc.service.AuthService;
 import com.body.linkbetweenus.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
@@ -27,11 +28,12 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final AccountCacheService accountCacheService;
 
     @Override
     public LoginResponse register(RegisterRequest request) {
-        // 检查账号是否已存在
-        if (userMapper.selectById(request.getAccount()) != null) {
+        // 检查账号是否已存在（优先查Redis缓存，未命中再查DB）
+        if (accountCacheService.isTaken(request.getAccount())) {
             throw new RuntimeException("该账号已被注册");
         }
 
@@ -91,4 +93,5 @@ public class AuthServiceImpl implements AuthService {
         UserCacheVo cacheVo = UserCacheVo.from(user);
         redisTemplate.opsForValue().set(USER_CACHE_PREFIX + user.getAccount(), cacheVo, CACHE_TTL);
     }
+
 }
