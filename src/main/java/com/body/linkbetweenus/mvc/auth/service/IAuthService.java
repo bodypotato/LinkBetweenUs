@@ -1,4 +1,4 @@
-package com.body.linkbetweenus.mvc.service.auth;
+package com.body.linkbetweenus.mvc.auth.service;
 
 import com.body.linkbetweenus.dto.LoginRequest;
 import com.body.linkbetweenus.dto.LoginResponse;

@@ -1,10 +1,10 @@
-package com.body.linkbetweenus.mvc.controller;
+package com.body.linkbetweenus.mvc.auth.controller;
 
 import com.body.linkbetweenus.common.Result;
 import com.body.linkbetweenus.dto.LoginRequest;
 import com.body.linkbetweenus.dto.LoginResponse;
 import com.body.linkbetweenus.dto.RegisterRequest;
-import com.body.linkbetweenus.mvc.service.auth.IAuthService;
+import com.body.linkbetweenus.mvc.auth.service.IAuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
