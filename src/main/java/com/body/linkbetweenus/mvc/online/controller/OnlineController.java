@@ -2,7 +2,6 @@ package com.body.linkbetweenus.mvc.online.controller;
 
 import com.body.linkbetweenus.common.Result;
 import com.body.linkbetweenus.mvc.online.service.OnlineStatusService;
-import com.body.linkbetweenus.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,14 +16,12 @@ import java.util.Set;
 public class OnlineController {
 
     private final OnlineStatusService onlineStatusService;
-    private final JwtUtil jwtUtil;
 
     /**
      * 查询当前所有在线用户
      */
     @GetMapping
-    public Result<Set<Object>> getOnlineUsers(@RequestHeader("Authorization") String authHeader) {
-        jwtUtil.extractAccountFromHeader(authHeader); // 仅校验登录态
+    public Result<Set<Object>> getOnlineUsers(@RequestAttribute("account") String account) {
         return Result.success(onlineStatusService.getOnlineAccounts());
     }
 
@@ -32,9 +29,8 @@ public class OnlineController {
      * 查询指定用户是否在线
      */
     @GetMapping("/{account}")
-    public Result<Boolean> checkOnline(@RequestHeader("Authorization") String authHeader,
+    public Result<Boolean> checkOnline(@RequestAttribute("account") String currentAccount,
                                        @PathVariable String account) {
-        jwtUtil.extractAccountFromHeader(authHeader); // 仅校验登录态
         return Result.success(onlineStatusService.isOnline(account));
     }
 }
