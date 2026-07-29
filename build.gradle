@@ -25,6 +25,10 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
+    //websocket
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+
     //my-batis plus
     implementation("com.baomidou:mybatis-plus-spring-boot4-starter:3.5.16")
 

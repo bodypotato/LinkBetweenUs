@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>LinkBetweenUs — 测试面板</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui; background: #1a1a2e; color: #eee; min-height: 100vh; display: flex; }
+
+        /* 左侧面板 */
+        #sidebar {
+            width: 340px; background: #16213e; padding: 20px;
+            display: flex; flex-direction: column; gap: 12px;
+            border-right: 1px solid #0f3460; overflow-y: auto; max-height: 100vh;
+        }
+        #sidebar h2 { color: #e94560; font-size: 1.1em; text-align: center; }
+
+        .card {
+            background: #0f3460; border-radius: 10px; padding: 12px;
+            display: flex; flex-direction: column; gap: 6px;
+        }
+        .card h3 { font-size: 0.85em; color: #a0b4c8; margin-bottom: 2px; }
+
+        input, button, select {
+            padding: 7px 10px; border-radius: 6px; border: none; font-size: 0.85em;
+        }
+        input { background: #1a1a2e; color: #eee; border: 1px solid #0f3460; }
+        input:focus { outline: none; border-color: #e94560; }
+        button { background: #e94560; color: white; cursor: pointer; font-weight: 600; }
+        button:hover { background: #d63850; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        button.small { padding: 4px 10px; font-size: 0.8em; }
+        button.accept { background: #00c853; }
+        button.accept:hover { background: #00a844; }
+        button.reject { background: #ff5252; }
+        button.reject:hover { background: #d32f2f; }
+
+        .row { display: flex; gap: 8px; }
+        .row input { flex: 1; }
+
+        .status-dot {
+            display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+            margin-right: 6px;
+        }
+        .status-dot.online { background: #00e676; box-shadow: 0 0 8px #00e676; }
+        .status-dot.offline { background: #ff5252; }
+
+        .list-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 5px 8px; background: #1a1a2e; border-radius: 6px;
+            font-size: 0.82em; margin-bottom: 3px;
+        }
+        .list-item .name { color: #4fc3f7; }
+        .list-item .actions { display: flex; gap: 4px; }
+
+        /* 右侧日志区 */
+        #main {
+            flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 16px;
+        }
+        #main h2 { color: #e94560; font-size: 1.2em; }
+
+        #log {
+            flex: 1; background: #0a0a1a; border-radius: 10px; padding: 16px;
+            overflow-y: auto; font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.82em; line-height: 1.6;
+        }
+        .log-line { margin-bottom: 2px; word-break: break-all; }
+        .log-time { color: #666; }
+        .log-info { color: #4fc3f7; }
+        .log-success { color: #00e676; }
+        .log-error { color: #ff5252; }
+        .log-warn { color: #ffab40; }
+        .log-msg { color: #ce93d8; }
+        .log-friend { color: #ff80ab; }
+
+        #online-list { display: flex; flex-wrap: wrap; gap: 6px; min-height: 20px; }
+        .online-tag {
+            background: #1b5e20; color: #00e676; padding: 2px 10px;
+            border-radius: 12px; font-size: 0.82em;
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <h2>🔗 LinkBetweenUs 测试面板</h2>
+
+    <!-- 注册 -->
+    <div class="card">
+        <h3>📝 注册</h3>
+        <input id="reg-account" placeholder="账号 (3-32位)">
+        <input id="reg-name" placeholder="昵称">
+        <input id="reg-password" type="password" placeholder="密码 (6-32位)">
+        <button onclick="doRegister()">注册</button>
+    </div>
+
+    <!-- 登录 -->
+    <div class="card">
+        <h3>🔑 登录</h3>
+        <input id="login-account" placeholder="账号">
+        <input id="login-password" type="password" placeholder="密码">
+        <button onclick="doLogin()">登录</button>
+    </div>
+
+    <!-- 连接状态 -->
+    <div class="card">
+        <h3>
+            <span class="status-dot offline" id="ws-dot"></span>
+            WebSocket: <b id="ws-status">未连接</b>
+        </h3>
+        <div class="row">
+            <button id="btn-connect" onclick="connectWS()" disabled>连接</button>
+            <button id="btn-disconnect" onclick="disconnectWS()" disabled>断开</button>
+        </div>
+        <small style="color:#888;">当前: <span id="current-account">—</span></small>
+    </div>
+
+    <!-- 搜索用户 -->
+    <div class="card">
+        <h3>🔍 搜索用户</h3>
+        <div class="row">
+            <input id="search-keyword" placeholder="账号或昵称">
+            <button onclick="searchUsers()">搜索</button>
+        </div>
+        <div id="search-results" style="max-height:120px;overflow-y:auto;"></div>
+    </div>
+
+    <!-- 好友请求 -->
+    <div class="card">
+        <h3>📨 好友请求</h3>
+        <div class="row">
+            <input id="fr-account" placeholder="对方账号">
+            <input id="fr-message" placeholder="附言(可选)" style="flex:0.5;">
+        </div>
+        <button onclick="sendFriendRequest()">发送好友请求</button>
+        <button class="small" onclick="refreshIncoming()" style="margin-top:4px;">刷新收到的请求</button>
+        <div id="incoming-list" style="max-height:100px;overflow-y:auto;"></div>
+        <button class="small" onclick="refreshOutgoing()">刷新发出的请求</button>
+        <div id="outgoing-list" style="max-height:80px;overflow-y:auto;"></div>
+    </div>
+
+    <!-- 好友列表 -->
+    <div class="card">
+        <h3>👥 好友列表</h3>
+        <button onclick="refreshFriendList()">刷新好友列表</button>
+        <div id="friend-list" style="max-height:150px;overflow-y:auto;"></div>
+    </div>
+
+    <!-- 在线用户 -->
+    <div class="card">
+        <h3>🟢 在线用户</h3>
+        <div id="online-list"><span style="color:#666;">点击刷新</span></div>
+        <button onclick="refreshOnline()">刷新在线列表</button>
+    </div>
+</div>
+
+<!-- 日志 -->
+<div id="main">
+    <h2>📋 事件日志</h2>
+    <div id="log"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
+<script>
+const API = 'http://localhost:8080/api';
+let stompClient = null;
+let myToken = '';
+let myAccount = '';
+
+function now() {
+    return new Date().toLocaleTimeString('zh-CN', { hour12: false });
+}
+
+function log(text, cls = 'log-info') {
+    const div = document.createElement('div');
+    div.className = 'log-line';
+    div.innerHTML = `<span class="log-time">${now()}</span> <span class="${cls}">${text}</span>`;
+    document.getElementById('log').appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth' });
+}
+
+async function api(method, path, body) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (myToken) headers['Authorization'] = `Bearer ${myToken}`;
+    const res = await fetch(API + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    const data = await res.json();
+    if (!res.ok && data.code !== 200) throw new Error(data.message || `HTTP ${res.status}`);
+    return data;
+}
+
+// ====== 注册 ======
+async function doRegister() {
+    try {
+        const account = document.getElementById('reg-account').value.trim();
+        const name = document.getElementById('reg-name').value.trim();
+        const password = document.getElementById('reg-password').value;
+        if (!account || !name || !password) { log('请填写完整注册信息', 'log-warn'); return; }
+
+        log(`注册中… account=${account}`, 'log-info');
+        const res = await api('POST', '/auth/register', { account, name, password });
+        log(`✅ 注册成功! account=${res.data.account}, name=${res.data.name}`, 'log-success');
+        document.getElementById('login-account').value = account;
+        document.getElementById('login-password').value = password;
+    } catch (e) {
+        log(`❌ 注册失败: ${e.message}`, 'log-error');
+    }
+}
+
+// ====== 登录 ======
+async function doLogin() {
+    try {
+        const account = document.getElementById('login-account').value.trim();
+        const password = document.getElementById('login-password').value;
+        if (!account || !password) { log('请输入账号和密码', 'log-warn'); return; }
+
+        log(`登录中… account=${account}`, 'log-info');
+        const res = await api('POST', '/auth/login', { account, password });
+        myToken = res.data.token;
+        myAccount = res.data.account;
+        log(`✅ 登录成功! account=${myAccount}, token=${myToken.substring(0, 30)}...`, 'log-success');
+
+        document.getElementById('current-account').textContent = myAccount;
+        document.getElementById('btn-connect').disabled = false;
+    } catch (e) {
+        log(`❌ 登录失败: ${e.message}`, 'log-error');
+    }
+}
+
+// ====== WebSocket ======
+function connectWS() {
+    if (!myToken) { log('请先登录!', 'log-warn'); return; }
+
+    log(`🔗 正在连接 ws://localhost:8080/ws?token=...`, 'log-info');
+
+    stompClient = new StompJs.Client({
+        brokerURL: `ws://localhost:8080/ws?token=${myToken}`,
+        heartbeatIncoming: 10000,
+        heartbeatOutgoing: 10000,
+        debug: msg => log(`[STOMP] ${msg}`, 'log-info'),
+    });
+
+    stompClient.onConnect = frame => {
+        log('✅ WebSocket 已连接!', 'log-success');
+        updateWSStatus(true);
+
+        // 订阅在线状态广播
+        stompClient.subscribe('/topic/status', msg => {
+            log(`📡 状态广播: ${msg.body}`, 'log-warn');
+        });
+
+        // 订阅私聊消息（预留）
+        stompClient.subscribe('/user/queue/private', msg => {
+            log(`💬 私聊: ${msg.body}`, 'log-msg');
+        });
+
+        // 订阅好友通知
+        stompClient.subscribe('/user/queue/friend-request', msg => {
+            const notif = JSON.parse(msg.body);
+            handleFriendNotification(notif);
+        });
+
+        refreshOnline();
+        refreshFriendList();
+        refreshIncoming();
+    };
+
+    stompClient.onDisconnect = frame => {
+        log('🔌 WebSocket 已断开', 'log-warn');
+        updateWSStatus(false);
+    };
+
+    stompClient.onStompError = frame => {
+        log(`❌ STOMP 错误: ${frame.headers?.message || frame.body}`, 'log-error');
+    };
+
+    stompClient.onWebSocketClose = evt => {
+        log(`⚠️ WebSocket 关闭: code=${evt.code}`, 'log-warn');
+    };
+
+    stompClient.activate();
+}
+
+function disconnectWS() {
+    if (stompClient) {
+        stompClient.deactivate();
+        log('🔌 主动断开连接', 'log-info');
+    }
+}
+
+function updateWSStatus(connected) {
+    const dot = document.getElementById('ws-dot');
+    const status = document.getElementById('ws-status');
+    dot.className = 'status-dot ' + (connected ? 'online' : 'offline');
+    status.textContent = connected ? '已连接' : '未连接';
+    document.getElementById('btn-connect').disabled = connected;
+    document.getElementById('btn-disconnect').disabled = !connected;
+}
+
+// ====== 好友通知处理 ======
+function handleFriendNotification(notif) {
+    switch (notif.type) {
+        case 'FRIEND_REQUEST':
+            log(`📩 收到好友请求! 来自 ${notif.fromName}(${notif.fromAccount}), requestId=${notif.requestId}`, 'log-friend');
+            refreshIncoming();
+            break;
+        case 'FRIEND_ACCEPTED':
+            log(`✅ 好友请求已被 ${notif.fromName}(${notif.fromAccount}) 接受!`, 'log-success');
+            refreshFriendList();
+            refreshOutgoing();
+            break;
+        case 'FRIEND_REJECTED':
+            log(`❌ 好友请求已被 ${notif.fromName}(${notif.fromAccount}) 拒绝`, 'log-warn');
+            refreshOutgoing();
+            break;
+    }
+}
+
+// ====== 搜索用户 ======
+async function searchUsers() {
+    const keyword = document.getElementById('search-keyword').value.trim();
+    if (!keyword) { log('请输入搜索关键词', 'log-warn'); return; }
+    if (!myToken) { log('请先登录', 'log-warn'); return; }
+
+    try {
+        const res = await api('GET', `/friend/search?keyword=${encodeURIComponent(keyword)}`);
+        const users = res.data || [];
+        const container = document.getElementById('search-results');
+        if (users.length === 0) {
+            container.innerHTML = '<span style="color:#666;">无匹配用户</span>';
+        } else {
+            container.innerHTML = users.map(u =>
+                `<div class="list-item">
+                    <span><span class="name">${u.name}</span> (${u.account})</span>
+                    <button class="small" onclick="quickSendRequest('${u.account}')">加好友</button>
+                </div>`
+            ).join('');
+        }
+        log(`🔍 搜索 "${keyword}": 找到 ${users.length} 个用户`, 'log-info');
+    } catch (e) {
+        log(`❌ 搜索失败: ${e.message}`, 'log-error');
+    }
+}
+
+function quickSendRequest(account) {
+    document.getElementById('fr-account').value = account;
+    log(`👉 已填入目标账号: ${account}`, 'log-info');
+}
+
+// ====== 好友请求 ======
+async function sendFriendRequest() {
+    const toAccount = document.getElementById('fr-account').value.trim();
+    const message = document.getElementById('fr-message').value.trim();
+    if (!toAccount) { log('请输入对方账号', 'log-warn'); return; }
+
+    try {
+        await api('POST', '/friend/request', { toAccount, message: message || null });
+        log(`📤 好友请求已发送给 ${toAccount}`, 'log-success');
+        document.getElementById('fr-account').value = '';
+        document.getElementById('fr-message').value = '';
+        refreshOutgoing();
+    } catch (e) {
+        log(`❌ 发送失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function refreshIncoming() {
+    if (!myToken) return;
+    try {
+        const res = await api('GET', '/friend/request/incoming');
+        const requests = res.data || [];
+        const container = document.getElementById('incoming-list');
+        if (requests.length === 0) {
+            container.innerHTML = '<span style="color:#666;">暂无收到的好友请求</span>';
+        } else {
+            container.innerHTML = requests.map(r =>
+                `<div class="list-item">
+                    <span>来自 <span class="name">${r.fromName}</span>(${r.fromAccount})${r.message ? ' — ' + r.message : ''}</span>
+                    <span class="actions">
+                        <button class="small accept" onclick="acceptRequest(${r.id})">接受</button>
+                        <button class="small reject" onclick="rejectRequest(${r.id})">拒绝</button>
+                    </span>
+                </div>`
+            ).join('');
+        }
+    } catch (e) {
+        log(`❌ 获取收到请求失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function refreshOutgoing() {
+    if (!myToken) return;
+    try {
+        const res = await api('GET', '/friend/request/outgoing');
+        const requests = res.data || [];
+        const container = document.getElementById('outgoing-list');
+        if (requests.length === 0) {
+            container.innerHTML = '<span style="color:#666;">暂无发出的好友请求</span>';
+        } else {
+            container.innerHTML = requests.map(r =>
+                `<div class="list-item">
+                    <span>发给 <span class="name">${r.toName}</span>(${r.toAccount})</span>
+                    <span style="color:#ffab40;">等待回复</span>
+                </div>`
+            ).join('');
+        }
+    } catch (e) {
+        log(`❌ 获取发出请求失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function acceptRequest(requestId) {
+    try {
+        await api('PUT', `/friend/request/${requestId}/accept`);
+        log(`✅ 已接受好友请求 requestId=${requestId}`, 'log-success');
+        refreshIncoming();
+        refreshFriendList();
+    } catch (e) {
+        log(`❌ 接受失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function rejectRequest(requestId) {
+    try {
+        await api('PUT', `/friend/request/${requestId}/reject`);
+        log(`❌ 已拒绝好友请求 requestId=${requestId}`, 'log-warn');
+        refreshIncoming();
+    } catch (e) {
+        log(`❌ 拒绝失败: ${e.message}`, 'log-error');
+    }
+}
+
+// ====== 好友列表 ======
+async function refreshFriendList() {
+    if (!myToken) return;
+    try {
+        const res = await api('GET', '/friend');
+        const friends = res.data || [];
+        const container = document.getElementById('friend-list');
+        if (friends.length === 0) {
+            container.innerHTML = '<span style="color:#666;">还没有好友</span>';
+        } else {
+            container.innerHTML = friends.map(f =>
+                `<div class="list-item">
+                    <span><span class="name">${f.name}</span> (${f.account})</span>
+                    <button class="small reject" onclick="removeFriend('${f.account}')">删除</button>
+                </div>`
+            ).join('');
+        }
+        log(`👥 好友列表: ${friends.map(f => f.name).join(', ') || '无'}`, 'log-info');
+    } catch (e) {
+        log(`❌ 获取好友列表失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function removeFriend(friendAccount) {
+    if (!confirm(`确认删除好友 ${friendAccount}?`)) return;
+    try {
+        await api('DELETE', `/friend/${friendAccount}`);
+        log(`🗑️ 已删除好友: ${friendAccount}`, 'log-warn');
+        refreshFriendList();
+    } catch (e) {
+        log(`❌ 删除失败: ${e.message}`, 'log-error');
+    }
+}
+
+// ====== 在线列表 ======
+async function refreshOnline() {
+    if (!myToken) { log('请先登录再查询在线列表', 'log-warn'); return; }
+    try {
+        const res = await api('GET', '/online');
+        const users = res.data || [];
+        const container = document.getElementById('online-list');
+        if (users.length === 0) {
+            container.innerHTML = '<span style="color:#666;">暂无在线用户</span>';
+        } else {
+            container.innerHTML = users.map(u => `<span class="online-tag">🟢 ${u}</span>`).join('');
+        }
+        log(`📋 在线用户: [${users.join(', ') || '无'}]`, 'log-info');
+    } catch (e) {
+        log(`❌ 查询在线列表失败: ${e.message}`, 'log-error');
+    }
+}
+
+// 页面加载提示
+log('🚀 LinkBetweenUs 测试面板就绪', 'log-success');
+log('👉 先注册 → 登录 → 连接WebSocket', 'log-info');
+log('💡 开两个浏览器窗口，用不同账号登录测试好友功能', 'log-info');
+log('🔗 好友操作: 搜索用户 → 发好友请求 → 对方收到通知 → 接受/拒绝', 'log-info');
+</script>
+</body>
+</html>

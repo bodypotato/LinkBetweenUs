@@ -22,7 +22,7 @@ public class UserController {
      */
     @GetMapping("/info")
     public Result<UserCacheVo> getInfo(@RequestHeader("Authorization") String authHeader) {
-        String account = extractAccount(authHeader);
+        String account = jwtUtil.extractAccountFromHeader(authHeader);
         UserCacheVo info = userService.getInfo(account);
         return Result.success(info);
     }
@@ -33,22 +33,8 @@ public class UserController {
     @PutMapping("/name")
     public Result<Void> updateName(@RequestHeader("Authorization") String authHeader,
                                    @Valid @RequestBody UpdateNameRequest request) {
-        String account = extractAccount(authHeader);
+        String account = jwtUtil.extractAccountFromHeader(authHeader);
         userService.updateName(account, request.getName());
         return Result.success();
-    }
-
-    /**
-     * 从 Authorization 头中提取账号
-     */
-    private String extractAccount(String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            throw new RuntimeException("未登录或token格式错误");
-        }
-        String token = authHeader.substring(7);
-        if (!jwtUtil.validateToken(token)) {
-            throw new RuntimeException("token已过期，请重新登录");
-        }
-        return jwtUtil.getAccountFromToken(token);
     }
 }
