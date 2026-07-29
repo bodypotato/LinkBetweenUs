@@ -1,4 +1,4 @@
-package com.body.linkbetweenus.mvc.service.message;
+package com.body.linkbetweenus.mvc.user.service;
 
 import com.body.linkbetweenus.dto.UserCacheVo;
 

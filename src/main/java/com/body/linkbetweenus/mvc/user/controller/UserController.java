@@ -1,9 +1,9 @@
-package com.body.linkbetweenus.mvc.controller;
+package com.body.linkbetweenus.mvc.user.controller;
 
 import com.body.linkbetweenus.common.Result;
 import com.body.linkbetweenus.dto.UpdateNameRequest;
 import com.body.linkbetweenus.dto.UserCacheVo;
-import com.body.linkbetweenus.mvc.service.message.UserService;
+import com.body.linkbetweenus.mvc.user.service.UserService;
 import com.body.linkbetweenus.util.JwtUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

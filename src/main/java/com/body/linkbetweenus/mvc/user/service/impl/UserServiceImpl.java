@@ -1,9 +1,9 @@
-package com.body.linkbetweenus.mvc.service.message.impl;
+package com.body.linkbetweenus.mvc.user.service.impl;
 
 import com.body.linkbetweenus.dto.UserCacheVo;
 import com.body.linkbetweenus.entity.User;
 import com.body.linkbetweenus.mvc.mapper.UserMapper;
-import com.body.linkbetweenus.mvc.service.message.UserService;
+import com.body.linkbetweenus.mvc.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
