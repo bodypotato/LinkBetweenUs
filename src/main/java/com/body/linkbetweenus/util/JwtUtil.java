@@ -56,6 +56,21 @@ public class JwtUtil {
         }
     }
 
+    /**
+     * 从请求头 Authorization: Bearer xxx 中提取用户账号，
+     * token 无效或过期时抛出异常。
+     */
+    public String extractAccountFromHeader(String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            throw new RuntimeException("未登录或token格式错误");
+        }
+        String token = authHeader.substring(7);
+        if (!validateToken(token)) {
+            throw new RuntimeException("token已过期，请重新登录");
+        }
+        return getAccountFromToken(token);
+    }
+
     private Claims getClaims(String token) {
         return Jwts.parser()
                 .verifyWith(secretKey)
