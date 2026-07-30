@@ -6,9 +6,11 @@ import com.body.linkbetweenus.dto.ConversationVO;
 import com.body.linkbetweenus.dto.MessageVO;
 import com.body.linkbetweenus.dto.ReadReceiptDto;
 import com.body.linkbetweenus.dto.SendMessageRequest;
+import com.body.linkbetweenus.entity.Friend;
 import com.body.linkbetweenus.entity.Message;
 import com.body.linkbetweenus.entity.User;
 import com.body.linkbetweenus.mvc.chat.service.MessageService;
+import com.body.linkbetweenus.mvc.mapper.FriendMapper;
 import com.body.linkbetweenus.mvc.mapper.MessageMapper;
 import com.body.linkbetweenus.mvc.mapper.UserMapper;
 import com.body.linkbetweenus.mvc.online.service.OnlineStatusService;
@@ -29,6 +31,7 @@ public class MessageServiceImpl implements MessageService {
 
     private final MessageMapper messageMapper;
     private final UserMapper userMapper;
+    private final FriendMapper friendMapper;
     private final OnlineStatusService onlineStatusService;
     private final SimpMessagingTemplate messagingTemplate;
 
@@ -48,7 +51,12 @@ public class MessageServiceImpl implements MessageService {
             throw new RuntimeException("该用户不存在");
         }
 
-        // 3. 持久化消息
+        // 3. 必须先成为好友
+        if (!isFriend(fromAccount, toAccount)) {
+            throw new RuntimeException("你们还不是好友，无法发送消息");
+        }
+
+        // 4. 持久化消息
         Message message = Message.builder()
                 .fromAccount(fromAccount)
                 .toAccount(toAccount)
@@ -243,5 +251,14 @@ public class MessageServiceImpl implements MessageService {
         if (obj == null) return 0;
         if (obj instanceof Number n) return n.longValue();
         return 0;
+    }
+
+    private boolean isFriend(String account1, String account2) {
+        String a = account1.compareTo(account2) < 0 ? account1 : account2;
+        String b = account1.compareTo(account2) < 0 ? account2 : account1;
+        return friendMapper.selectOne(
+                new LambdaQueryWrapper<Friend>()
+                        .eq(Friend::getAccountA, a)
+                        .eq(Friend::getAccountB, b)) != null;
     }
 }
