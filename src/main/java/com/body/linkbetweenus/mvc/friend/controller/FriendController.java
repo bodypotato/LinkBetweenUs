@@ -7,7 +7,6 @@ import com.body.linkbetweenus.dto.FriendVO;
 import com.body.linkbetweenus.dto.UserCacheVo;
 import com.body.linkbetweenus.mvc.friend.service.FriendRequestService;
 import com.body.linkbetweenus.mvc.friend.service.FriendService;
-import com.body.linkbetweenus.util.JwtUtil;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
@@ -22,16 +21,14 @@ public class FriendController {
 
     private final FriendRequestService friendRequestService;
     private final FriendService friendService;
-    private final JwtUtil jwtUtil;
 
     /**
      * 搜索用户（按账号或昵称模糊匹配）
      */
     @GetMapping("/search")
     public Result<List<UserCacheVo>> searchUsers(
-            @RequestHeader("Authorization") String authHeader,
+            @RequestAttribute("account") String account,
             @RequestParam @NotBlank String keyword) {
-        String account = jwtUtil.extractAccountFromHeader(authHeader);
         return Result.success(friendService.searchUsers(account, keyword));
     }
 
@@ -40,9 +37,8 @@ public class FriendController {
      */
     @PostMapping("/request")
     public Result<Void> sendFriendRequest(
-            @RequestHeader("Authorization") String authHeader,
+            @RequestAttribute("account") String account,
             @Valid @RequestBody FriendRequestSendRequest request) {
-        String account = jwtUtil.extractAccountFromHeader(authHeader);
         friendRequestService.sendFriendRequest(account, request);
         return Result.success();
     }
@@ -52,8 +48,7 @@ public class FriendController {
      */
     @GetMapping("/request/incoming")
     public Result<List<FriendRequestVO>> getIncomingRequests(
-            @RequestHeader("Authorization") String authHeader) {
-        String account = jwtUtil.extractAccountFromHeader(authHeader);
+            @RequestAttribute("account") String account) {
         return Result.success(friendRequestService.getIncomingRequests(account));
     }
 
@@ -62,8 +57,7 @@ public class FriendController {
      */
     @GetMapping("/request/outgoing")
     public Result<List<FriendRequestVO>> getOutgoingRequests(
-            @RequestHeader("Authorization") String authHeader) {
-        String account = jwtUtil.extractAccountFromHeader(authHeader);
+            @RequestAttribute("account") String account) {
         return Result.success(friendRequestService.getOutgoingRequests(account));
     }
 
@@ -72,9 +66,8 @@ public class FriendController {
      */
     @PutMapping("/request/{requestId}/accept")
     public Result<Void> acceptFriendRequest(
-            @RequestHeader("Authorization") String authHeader,
+            @RequestAttribute("account") String account,
             @PathVariable Long requestId) {
-        String account = jwtUtil.extractAccountFromHeader(authHeader);
         friendRequestService.acceptFriendRequest(account, requestId);
         return Result.success();
     }
@@ -84,9 +77,8 @@ public class FriendController {
      */
     @PutMapping("/request/{requestId}/reject")
     public Result<Void> rejectFriendRequest(
-            @RequestHeader("Authorization") String authHeader,
+            @RequestAttribute("account") String account,
             @PathVariable Long requestId) {
-        String account = jwtUtil.extractAccountFromHeader(authHeader);
         friendRequestService.rejectFriendRequest(account, requestId);
         return Result.success();
     }
@@ -96,8 +88,7 @@ public class FriendController {
      */
     @GetMapping
     public Result<List<FriendVO>> getFriendList(
-            @RequestHeader("Authorization") String authHeader) {
-        String account = jwtUtil.extractAccountFromHeader(authHeader);
+            @RequestAttribute("account") String account) {
         return Result.success(friendService.getFriendList(account));
     }
 
@@ -106,9 +97,8 @@ public class FriendController {
      */
     @DeleteMapping("/{friendAccount}")
     public Result<Void> removeFriend(
-            @RequestHeader("Authorization") String authHeader,
+            @RequestAttribute("account") String account,
             @PathVariable String friendAccount) {
-        String account = jwtUtil.extractAccountFromHeader(authHeader);
         friendService.removeFriend(account, friendAccount);
         return Result.success();
     }
