@@ -9,8 +9,8 @@
 
         /* 左侧面板 */
         #sidebar {
-            width: 340px; background: #16213e; padding: 20px;
-            display: flex; flex-direction: column; gap: 12px;
+            width: 340px; min-width: 340px; background: #16213e; padding: 20px;
+            display: flex; flex-direction: column; gap: 10px;
             border-right: 1px solid #0f3460; overflow-y: auto; max-height: 100vh;
         }
         #sidebar h2 { color: #e94560; font-size: 1.1em; text-align: center; }
@@ -48,21 +48,74 @@
         .list-item {
             display: flex; align-items: center; justify-content: space-between;
             padding: 5px 8px; background: #1a1a2e; border-radius: 6px;
-            font-size: 0.82em; margin-bottom: 3px;
+            font-size: 0.82em; margin-bottom: 3px; gap: 4px;
         }
-        .list-item .name { color: #4fc3f7; }
-        .list-item .actions { display: flex; gap: 4px; }
+        .list-item .name { color: #4fc3f7; cursor: pointer; }
+        .list-item .name:hover { text-decoration: underline; }
+        .list-item .actions { display: flex; gap: 4px; flex-shrink: 0; }
 
-        /* 右侧日志区 */
+        /* 右侧主区域 */
         #main {
-            flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 16px;
+            flex: 1; display: flex; flex-direction: column; overflow: hidden;
         }
-        #main h2 { color: #e94560; font-size: 1.2em; }
 
+        /* 聊天区域 */
+        #chat-panel {
+            flex: 1; display: flex; flex-direction: column;
+            border-bottom: 2px solid #0f3460; min-height: 0;
+        }
+        #chat-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 20px; background: #16213e; gap: 12px;
+        }
+        #chat-header h2 { color: #e94560; font-size: 1em; white-space: nowrap; }
+        #chat-header select {
+            flex: 1; padding: 6px 10px; border-radius: 6px; background: #0f3460;
+            color: #eee; border: 1px solid #1a1a2e; font-size: 0.85em;
+            max-width: 300px;
+        }
+        #chat-header .unread-badge {
+            background: #e94560; color: white; border-radius: 10px; padding: 1px 8px;
+            font-size: 0.75em; font-weight: 600; display: none;
+        }
+
+        #messages {
+            flex: 1; overflow-y: auto; padding: 16px 20px;
+            display: flex; flex-direction: column; gap: 8px;
+            background: #0a0a1a;
+        }
+        .msg-row { display: flex; flex-direction: column; max-width: 75%; }
+        .msg-row.mine { align-self: flex-end; align-items: flex-end; }
+        .msg-row.theirs { align-self: flex-start; align-items: flex-start; }
+        .msg-bubble {
+            padding: 8px 14px; border-radius: 14px; font-size: 0.9em;
+            line-height: 1.45; word-break: break-word;
+        }
+        .msg-row.mine .msg-bubble { background: #1e5c8b; color: #e0f0ff; border-bottom-right-radius: 4px; }
+        .msg-row.theirs .msg-bubble { background: #2a2a4a; color: #ddd; border-bottom-left-radius: 4px; }
+        .msg-meta {
+            font-size: 0.7em; color: #777; margin-top: 2px; display: flex; gap: 6px; align-items: center;
+        }
+        .msg-status { font-size: 0.85em; }
+        .msg-status.sent { color: #888; }
+        .msg-status.delivered { color: #4fc3f7; }
+        .msg-status.read { color: #00e676; }
+
+        #chat-input-area {
+            display: flex; gap: 10px; padding: 12px 20px; background: #16213e;
+        }
+        #chat-input-area input { flex: 1; }
+        #chat-input-area button { padding: 7px 20px; }
+
+        /* 日志区域 */
+        #log-panel {
+            height: 200px; display: flex; flex-direction: column;
+        }
+        #log-panel h2 { color: #e94560; font-size: 0.95em; padding: 8px 20px; background: #16213e; }
         #log {
-            flex: 1; background: #0a0a1a; border-radius: 10px; padding: 16px;
-            overflow-y: auto; font-family: 'JetBrains Mono', 'Fira Code', monospace;
-            font-size: 0.82em; line-height: 1.6;
+            flex: 1; overflow-y: auto; padding: 8px 20px; background: #0a0a1a;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.78em; line-height: 1.5;
         }
         .log-line { margin-bottom: 2px; word-break: break-all; }
         .log-time { color: #666; }
@@ -77,6 +130,11 @@
         .online-tag {
             background: #1b5e20; color: #00e676; padding: 2px 10px;
             border-radius: 12px; font-size: 0.82em;
+        }
+
+        .empty-chat {
+            flex: 1; display: flex; align-items: center; justify-content: center;
+            color: #555; font-size: 1.1em; background: #0a0a1a;
         }
     </style>
 </head>
@@ -154,10 +212,29 @@
     </div>
 </div>
 
-<!-- 日志 -->
+<!-- 右侧：聊天 + 日志 -->
 <div id="main">
-    <h2>📋 事件日志</h2>
-    <div id="log"></div>
+    <div id="chat-panel">
+        <div id="chat-header">
+            <h2>💬 聊天</h2>
+            <select id="conversation-select" onchange="onConversationChange()">
+                <option value="">-- 选择聊天对象 --</option>
+            </select>
+            <span class="unread-badge" id="unread-badge">0</span>
+            <button class="small" onclick="markCurrentAsRead()">标记已读</button>
+        </div>
+        <div id="messages">
+            <div class="empty-chat">👈 从好友列表点击名字或选择聊天对象开始</div>
+        </div>
+        <div id="chat-input-area">
+            <input id="chat-input" placeholder="输入消息…" onkeydown="if(event.key==='Enter') sendChatMessage()">
+            <button onclick="sendChatMessage()">发送</button>
+        </div>
+    </div>
+    <div id="log-panel">
+        <h2>📋 事件日志</h2>
+        <div id="log"></div>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
@@ -166,6 +243,10 @@ const API = 'http://localhost:8080/api';
 let stompClient = null;
 let myToken = '';
 let myAccount = '';
+
+// 当前聊天状态
+let currentChatAccount = '';
+let chatMessages = {};  // account → MessageVO[]
 
 function now() {
     return new Date().toLocaleTimeString('zh-CN', { hour12: false });
@@ -248,9 +329,22 @@ function connectWS() {
             log(`📡 状态广播: ${msg.body}`, 'log-warn');
         });
 
-        // 订阅私聊消息（预留）
+        // 订阅私聊消息
         stompClient.subscribe('/user/queue/private', msg => {
-            log(`💬 私聊: ${msg.body}`, 'log-msg');
+            const vo = JSON.parse(msg.body);
+            handleIncomingMessage(vo);
+        });
+
+        // 订阅发送确认
+        stompClient.subscribe('/user/queue/chat-ack', msg => {
+            const vo = JSON.parse(msg.body);
+            handleSentAck(vo);
+        });
+
+        // 订阅已读回执
+        stompClient.subscribe('/user/queue/read-receipt', msg => {
+            const receipt = JSON.parse(msg.body);
+            handleReadReceipt(receipt);
         });
 
         // 订阅好友通知
@@ -259,6 +353,8 @@ function connectWS() {
             handleFriendNotification(notif);
         });
 
+        // 拉取离线消息
+        fetchOfflineMessages();
         refreshOnline();
         refreshFriendList();
         refreshIncoming();
@@ -294,6 +390,225 @@ function updateWSStatus(connected) {
     status.textContent = connected ? '已连接' : '未连接';
     document.getElementById('btn-connect').disabled = connected;
     document.getElementById('btn-disconnect').disabled = !connected;
+}
+
+// ====== 离线消息 ======
+async function fetchOfflineMessages() {
+    try {
+        const res = await api('GET', '/message/offline');
+        const messages = res.data || [];
+        if (messages.length > 0) {
+            log(`📬 拉取到 ${messages.length} 条离线消息`, 'log-msg');
+            for (const msg of messages) {
+                addMessageToCache(msg);
+                if (msg.fromAccount === currentChatAccount) {
+                    renderMessages();
+                }
+            }
+            updateConversationSelect();
+        }
+    } catch (e) {
+        log(`❌ 拉取离线消息失败: ${e.message}`, 'log-error');
+    }
+}
+
+// ====== 聊天消息处理 ======
+function handleIncomingMessage(vo) {
+    log(`💬 收到消息: ${vo.fromName}(${vo.fromAccount}) → ${vo.content.substring(0, 30)}`, 'log-msg');
+    addMessageToCache(vo);
+    if (vo.fromAccount === currentChatAccount) {
+        renderMessages();
+        markCurrentAsRead();
+    }
+    updateConversationSelect();
+}
+
+function handleSentAck(vo) {
+    // 更新本地缓存中的消息状态
+    const key = vo.toAccount;
+    const msgs = chatMessages[key] || [];
+    for (let i = msgs.length - 1; i >= 0; i--) {
+        // 匹配临时消息（没有id或id相同）
+        if (msgs[i].id === vo.id || (msgs[i]._temp && msgs[i].toAccount === vo.toAccount && msgs[i].content === vo.content)) {
+            msgs[i] = vo;
+            break;
+        }
+    }
+    if (vo.toAccount === currentChatAccount) {
+        renderMessages();
+    }
+    updateConversationSelect();
+}
+
+function handleReadReceipt(receipt) {
+    log(`📖 已读回执: ${receipt.fromName} 阅读了 ${receipt.count} 条消息`, 'log-success');
+    // 更新本地消息状态为已读
+    const msgs = chatMessages[receipt.fromAccount] || [];
+    let updated = false;
+    for (const msg of msgs) {
+        if (msg.toAccount === receipt.fromAccount && msg.status < 2) {
+            msg.status = 2;
+            msg.readTime = receipt.readTime;
+            updated = true;
+        }
+    }
+    if (updated && receipt.fromAccount === currentChatAccount) {
+        renderMessages();
+    }
+}
+
+function addMessageToCache(vo) {
+    const other = vo.fromAccount === myAccount ? vo.toAccount : vo.fromAccount;
+    if (!chatMessages[other]) chatMessages[other] = [];
+    // 去重
+    const exists = chatMessages[other].some(m => m.id === vo.id);
+    if (!exists) {
+        chatMessages[other].push(vo);
+    }
+}
+
+// ====== 发送消息 ======
+function sendChatMessage() {
+    const input = document.getElementById('chat-input');
+    const content = input.value.trim();
+    if (!content) return;
+    if (!currentChatAccount) { log('请先选择聊天对象', 'log-warn'); return; }
+    if (!stompClient || !stompClient.connected) { log('WebSocket未连接', 'log-warn'); return; }
+
+    const body = { toAccount: currentChatAccount, content: content };
+
+    stompClient.publish({
+        destination: '/app/chat.private',
+        body: JSON.stringify(body)
+    });
+
+    // 乐观添加临时消息
+    const tempMsg = {
+        id: null, _temp: true,
+        fromAccount: myAccount, fromName: '我',
+        toAccount: currentChatAccount, content: content,
+        status: 0, createTime: new Date().toISOString(), readTime: null
+    };
+    if (!chatMessages[currentChatAccount]) chatMessages[currentChatAccount] = [];
+    chatMessages[currentChatAccount].push(tempMsg);
+    renderMessages();
+    input.value = '';
+    log(`📤 发送: → ${currentChatAccount} : ${content.substring(0, 30)}`, 'log-msg');
+}
+
+// ====== 已读回执 ======
+async function markCurrentAsRead() {
+    if (!currentChatAccount) return;
+    try {
+        const res = await api('PUT', `/message/read/${currentChatAccount}`);
+        const count = res.data || 0;
+        if (count > 0) {
+            log(`✅ 标记已读: ${count} 条来自 ${currentChatAccount} 的消息`, 'log-info');
+            // 更新本地状态
+            const msgs = chatMessages[currentChatAccount] || [];
+            for (const msg of msgs) {
+                if (msg.fromAccount === currentChatAccount && msg.status < 2) {
+                    msg.status = 2;
+                }
+            }
+            document.getElementById('unread-badge').style.display = 'none';
+        }
+    } catch (e) {
+        log(`❌ 标记已读失败: ${e.message}`, 'log-error');
+    }
+}
+
+// ====== 会话选择 ======
+function onConversationChange() {
+    const select = document.getElementById('conversation-select');
+    currentChatAccount = select.value;
+    if (currentChatAccount) {
+        loadChatHistory(currentChatAccount);
+        markCurrentAsRead();
+    } else {
+        document.getElementById('messages').innerHTML = '<div class="empty-chat">👈 从好友列表点击名字或选择聊天对象开始</div>';
+    }
+}
+
+async function loadChatHistory(otherAccount) {
+    try {
+        const res = await api('GET', `/message/chat/${otherAccount}?page=0&size=100`);
+        chatMessages[otherAccount] = res.data || [];
+        renderMessages();
+        log(`📜 加载聊天记录: 与 ${otherAccount} 共 ${chatMessages[otherAccount].length} 条`, 'log-info');
+    } catch (e) {
+        log(`❌ 加载聊天记录失败: ${e.message}`, 'log-error');
+    }
+}
+
+function renderMessages() {
+    const container = document.getElementById('messages');
+    const msgs = chatMessages[currentChatAccount] || [];
+
+    if (msgs.length === 0) {
+        container.innerHTML = '<div class="empty-chat">暂无消息，发送第一条吧 👋</div>';
+        return;
+    }
+
+    container.innerHTML = msgs.map(m => {
+        const isMine = m.fromAccount === myAccount;
+        const cls = isMine ? 'mine' : 'theirs';
+        const time = m.createTime ? new Date(m.createTime).toLocaleTimeString('zh-CN', {hour12: false}) : '';
+
+        let statusHtml = '';
+        if (isMine) {
+            if (m.status === 2) statusHtml = '<span class="msg-status read">✓已读</span>';
+            else if (m.status === 1) statusHtml = '<span class="msg-status delivered">✓送达</span>';
+            else statusHtml = '<span class="msg-status sent">✓发送</span>';
+        }
+
+        return `<div class="msg-row ${cls}">
+            <div class="msg-bubble">${escHtml(m.content)}</div>
+            <div class="msg-meta">
+                ${isMine ? statusHtml : ''}
+                <span>${time}</span>
+                ${!isMine ? `<span style="color:#4fc3f7;">${escHtml(m.fromName)}</span>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+
+    container.scrollTop = container.scrollHeight;
+}
+
+function escHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+}
+
+async function updateConversationSelect() {
+    try {
+        const res = await api('GET', '/message/conversations');
+        const convs = res.data || [];
+        const select = document.getElementById('conversation-select');
+        const currentVal = select.value;
+
+        let html = '<option value="">-- 选择聊天对象 --</option>';
+        let totalUnread = 0;
+        for (const c of convs) {
+            const sel = c.account === currentVal ? ' selected' : '';
+            const unread = c.unreadCount > 0 ? ` [${c.unreadCount}条未读]` : '';
+            html += `<option value="${c.account}"${sel}>${c.name} (${c.account})${unread}</option>`;
+            totalUnread += c.unreadCount;
+        }
+        select.innerHTML = html;
+
+        // 更新角标
+        const badge = document.getElementById('unread-badge');
+        if (totalUnread > 0) {
+            badge.style.display = 'inline';
+            badge.textContent = totalUnread;
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch (e) {
+        // 静默失败
+    }
 }
 
 // ====== 好友通知处理 ======
@@ -441,15 +756,29 @@ async function refreshFriendList() {
         } else {
             container.innerHTML = friends.map(f =>
                 `<div class="list-item">
-                    <span><span class="name">${f.name}</span> (${f.account})</span>
+                    <span><span class="name" onclick="startChat('${f.account}')" title="点击开始聊天">💬 ${f.name}</span> (${f.account})</span>
                     <button class="small reject" onclick="removeFriend('${f.account}')">删除</button>
                 </div>`
             ).join('');
         }
         log(`👥 好友列表: ${friends.map(f => f.name).join(', ') || '无'}`, 'log-info');
+        updateConversationSelect();
     } catch (e) {
         log(`❌ 获取好友列表失败: ${e.message}`, 'log-error');
     }
+}
+
+function startChat(account) {
+    // 如果下拉框中没有这个人，先添加一个临时 option
+    const select = document.getElementById('conversation-select');
+    if (!select.querySelector(`option[value="${account}"]`)) {
+        const opt = document.createElement('option');
+        opt.value = account;
+        opt.textContent = account;
+        select.appendChild(opt);
+    }
+    select.value = account;
+    onConversationChange();
 }
 
 async function removeFriend(friendAccount) {
@@ -484,8 +813,9 @@ async function refreshOnline() {
 // 页面加载提示
 log('🚀 LinkBetweenUs 测试面板就绪', 'log-success');
 log('👉 先注册 → 登录 → 连接WebSocket', 'log-info');
-log('💡 开两个浏览器窗口，用不同账号登录测试好友功能', 'log-info');
-log('🔗 好友操作: 搜索用户 → 发好友请求 → 对方收到通知 → 接受/拒绝', 'log-info');
+log('💡 开两个浏览器窗口，用不同账号登录测试好友+聊天功能', 'log-info');
+log('🔗 好友: 搜索 → 发好友请求 → 接受/拒绝', 'log-info');
+log('💬 聊天: 选择好友 → 发消息 → 实时接收 → 已读回执', 'log-info');
 </script>
 </body>
 </html>

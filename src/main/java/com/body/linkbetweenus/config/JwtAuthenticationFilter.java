@@ -47,6 +47,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
+        // OPTIONS 预检请求由 CORS 配置处理，JWT 过滤器必须放行，
+        // 否则预检请求没有 Authorization 头将被拦截，导致 CORS 报错
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
         String path = request.getRequestURI();
         return WHITELIST.stream().anyMatch(path::startsWith);
     }

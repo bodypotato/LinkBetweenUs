@@ -69,7 +69,7 @@ public class FriendRequestServiceImpl implements FriendRequestService {
             if (existing.getStatus() == FriendRequest.STATUS_ACCEPTED) {
                 throw new RuntimeException("你们已经是好友了");
             }
-            // STATUS_REJECTED: 允许重新发送，更新已有记录
+            // STATUS_REJECTED / STATUS_DISSOLVED: 允许重新发送，更新已有记录
             existing.setStatus(FriendRequest.STATUS_PENDING);
             existing.setMessage(request.getMessage());
             existing.setCreateTime(LocalDateTime.now());

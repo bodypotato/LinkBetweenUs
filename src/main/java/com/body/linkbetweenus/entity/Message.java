@@ -15,8 +15,8 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("LBU_Friend_Request")
-public class FriendRequest {
+@TableName("LBU_Message")
+public class Message {
 
     @TableId(type = IdType.AUTO)
     private Long id;
@@ -27,22 +27,21 @@ public class FriendRequest {
     @TableField("to_account")
     private String toAccount;
 
-    /** 0=待处理, 1=已接受, 2=已拒绝, 3=好友已解除 */
+    @TableField
+    private String content;
+
+    /** 0=已发送, 1=已送达, 2=已读 */
     @TableField
     private Integer status;
-
-    @TableField
-    private String message;
 
     @TableField("create_time")
     private LocalDateTime createTime;
 
-    @TableField("update_time")
-    private LocalDateTime updateTime;
+    @TableField("read_time")
+    private LocalDateTime readTime;
 
     // --- 常量 ---
-    public static final int STATUS_PENDING   = 0;
-    public static final int STATUS_ACCEPTED  = 1;
-    public static final int STATUS_REJECTED  = 2;
-    public static final int STATUS_DISSOLVED = 3;  // 好友已解除
+    public static final int STATUS_SENT      = 0;
+    public static final int STATUS_DELIVERED = 1;
+    public static final int STATUS_READ      = 2;
 }
