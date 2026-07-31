@@ -6,6 +6,7 @@ import com.body.linkbetweenus.dto.UserCacheVo;
 import com.body.linkbetweenus.mvc.user.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -19,7 +20,7 @@ public class UserController {
      * 查询个人信息
      */
     @GetMapping("/info")
-    public Result<UserCacheVo> getInfo(@RequestAttribute("account") String account) {
+    public Result<UserCacheVo> getInfo(@AuthenticationPrincipal String account) {
         UserCacheVo info = userService.getInfo(account);
         return Result.success(info);
     }
@@ -28,7 +29,7 @@ public class UserController {
      * 修改昵称
      */
     @PutMapping("/name")
-    public Result<Void> updateName(@RequestAttribute("account") String account,
+    public Result<Void> updateName(@AuthenticationPrincipal String account,
                                    @Valid @RequestBody UpdateNameRequest request) {
         userService.updateName(account, request.getName());
         return Result.success();

@@ -5,6 +5,7 @@ import com.body.linkbetweenus.dto.ConversationVO;
 import com.body.linkbetweenus.dto.MessageVO;
 import com.body.linkbetweenus.mvc.chat.service.MessageService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,7 +25,7 @@ public class MessageController {
      */
     @GetMapping("/chat/{otherAccount}")
     public Result<List<MessageVO>> getChatHistory(
-            @RequestAttribute("account") String account,
+            @AuthenticationPrincipal String account,
             @PathVariable String otherAccount,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
@@ -36,7 +37,7 @@ public class MessageController {
      */
     @GetMapping("/conversations")
     public Result<List<ConversationVO>> getConversations(
-            @RequestAttribute("account") String account) {
+            @AuthenticationPrincipal String account) {
         return Result.success(messageService.getConversations(account));
     }
 
@@ -45,7 +46,7 @@ public class MessageController {
      */
     @GetMapping("/offline")
     public Result<List<MessageVO>> fetchOfflineMessages(
-            @RequestAttribute("account") String account) {
+            @AuthenticationPrincipal String account) {
         return Result.success(messageService.fetchOfflineMessages(account));
     }
 
@@ -54,7 +55,7 @@ public class MessageController {
      */
     @PutMapping("/read/{fromAccount}")
     public Result<Integer> markAsRead(
-            @RequestAttribute("account") String account,
+            @AuthenticationPrincipal String account,
             @PathVariable String fromAccount) {
         int count = messageService.markAsRead(account, fromAccount);
         return Result.success(count);

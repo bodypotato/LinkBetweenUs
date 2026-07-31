@@ -3,6 +3,7 @@ package com.body.linkbetweenus.mvc.online.controller;
 import com.body.linkbetweenus.common.Result;
 import com.body.linkbetweenus.mvc.online.service.OnlineStatusService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Set;
@@ -21,7 +22,7 @@ public class OnlineController {
      * 查询当前所有在线用户
      */
     @GetMapping
-    public Result<Set<Object>> getOnlineUsers(@RequestAttribute("account") String account) {
+    public Result<Set<Object>> getOnlineUsers(@AuthenticationPrincipal String account) {
         return Result.success(onlineStatusService.getOnlineAccounts());
     }
 
@@ -29,7 +30,7 @@ public class OnlineController {
      * 查询指定用户是否在线
      */
     @GetMapping("/{account}")
-    public Result<Boolean> checkOnline(@RequestAttribute("account") String currentAccount,
+    public Result<Boolean> checkOnline(@AuthenticationPrincipal String currentAccount,
                                        @PathVariable String account) {
         return Result.success(onlineStatusService.isOnline(account));
     }

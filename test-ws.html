@@ -255,6 +255,7 @@ let currentChatAccount = '';
 let chatMessages = {};       // account → MessageVO[]
 let chatPages = {};          // account → 已加载的页数
 let chatHasMore = {};        // account → 是否还有更多
+let isLoadingMore = false;   // 防止滚动事件重复触发加载
 const PAGE_SIZE = 30;
 
 function now() {
@@ -534,6 +535,7 @@ function onConversationChange() {
     const select = document.getElementById('conversation-select');
     const account = select.value;
     if (account === currentChatAccount) return;  // 没变化，跳过（防止 startChat 触发两次）
+    isLoadingMore = false;  // 切换会话，重置加载锁
     currentChatAccount = account;
     if (currentChatAccount) {
         // 重置分页状态
@@ -578,8 +580,14 @@ async function loadChatHistory(otherAccount) {
 async function loadMoreMessages() {
     if (!currentChatAccount) return;
     if (!chatHasMore[currentChatAccount]) return;
-    chatPages[currentChatAccount]++;
-    await loadChatHistory(currentChatAccount);
+    if (isLoadingMore) return;
+    isLoadingMore = true;
+    try {
+        chatPages[currentChatAccount]++;
+        await loadChatHistory(currentChatAccount);
+    } finally {
+        isLoadingMore = false;
+    }
 }
 
 function renderMessages(preserveScroll) {
