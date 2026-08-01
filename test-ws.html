@@ -184,6 +184,36 @@
         <input id="login-account" placeholder="账号">
         <input id="login-password" type="password" placeholder="密码">
         <button onclick="doLogin()">登录</button>
+        <a href="#" onclick="showForgotPwd();return false;" style="font-size:12px;color:#aaa;display:block;margin-top:4px;">忘记密码？</a>
+    </div>
+
+    <!-- 设置密保问题 -->
+    <div class="card" id="security-card" style="display:none;">
+        <h3>🛡️ 密保设置</h3>
+        <div id="security-status"></div>
+        <input id="sq-pwd" type="password" placeholder="输入登录密码以确认身份" style="border-color:#ff9800;">
+        <input id="sq1" placeholder="问题1: 你的小学名称？">
+        <input id="sa1" placeholder="答案1">
+        <input id="sq2" placeholder="问题2: 你的出生城市？">
+        <input id="sa2" placeholder="答案2">
+        <input id="sq3" placeholder="问题3: 你最喜欢的食物？">
+        <input id="sa3" placeholder="答案3">
+        <button onclick="setupSecurity()">保存密保</button>
+    </div>
+
+    <!-- 忘记密码对话框 -->
+    <div class="card" id="forgot-pwd-card" style="display:none;">
+        <h3>🔐 重置密码</h3>
+        <div id="forgot-step1">
+            <input id="fp-account" placeholder="输入你的账号">
+            <button onclick="loadSecurityQuestions()">查询密保问题</button>
+        </div>
+        <div id="forgot-step2" style="display:none;">
+            <div id="fp-questions"></div>
+            <input id="fp-new-pwd" type="password" placeholder="新密码 (6-32位)">
+            <button onclick="resetPassword()">重置密码</button>
+        </div>
+        <a href="#" onclick="hideForgotPwd();return false;" style="font-size:12px;color:#aaa;">返回登录</a>
     </div>
 
     <!-- 连接状态 -->
@@ -392,8 +422,103 @@ async function doLogin() {
 
         document.getElementById('current-account').textContent = myAccount;
         document.getElementById('btn-connect').disabled = false;
+        document.getElementById('security-card').style.display = 'block';
+        loadMySecurity();
     } catch (e) {
         log(`❌ 登录失败: ${e.message}`, 'log-error');
+    }
+}
+
+// ====== 密保问题 ======
+function showForgotPwd() {
+    document.getElementById('forgot-pwd-card').style.display = 'block';
+    document.getElementById('forgot-step1').style.display = 'block';
+    document.getElementById('forgot-step2').style.display = 'none';
+}
+
+function hideForgotPwd() {
+    document.getElementById('forgot-pwd-card').style.display = 'none';
+}
+
+async function setupSecurity() {
+    if (!myToken) { log('请先登录', 'log-warn'); return; }
+    const password = document.getElementById('sq-pwd').value;
+    if (!password) { log('请输入登录密码以确认身份', 'log-warn'); return; }
+    const questions = [
+        { question: document.getElementById('sq1').value.trim(), answer: document.getElementById('sa1').value.trim() },
+        { question: document.getElementById('sq2').value.trim(), answer: document.getElementById('sa2').value.trim() },
+        { question: document.getElementById('sq3').value.trim(), answer: document.getElementById('sa3').value.trim() }
+    ];
+    if (questions.some(q => !q.question || !q.answer)) {
+        log('请填写完整的3个密保问题和答案', 'log-warn'); return;
+    }
+    try {
+        await api('POST', '/user/security', { password, questions });
+        log('✅ 密保问题已保存', 'log-success');
+        document.getElementById('sq-pwd').value = '';
+        loadMySecurity();
+    } catch (e) {
+        log(`❌ 保存失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function loadMySecurity() {
+    if (!myToken) return;
+    try {
+        const res = await api('GET', '/user/security');
+        const items = res.data || [];
+        const el = document.getElementById('security-status');
+        if (items.length > 0) {
+            el.innerHTML = '<span style="color:#0a0;">✅ 已设置 ' + items.length + ' 个密保问题</span>';
+            document.getElementById('sq1').value = items[0]?.question || '';
+            document.getElementById('sq2').value = items[1]?.question || '';
+            document.getElementById('sq3').value = items[2]?.question || '';
+        } else {
+            el.innerHTML = '<span style="color:#f80;">⚠ 未设置密保问题</span>';
+        }
+    } catch (e) {}
+}
+
+async function loadSecurityQuestions() {
+    const account = document.getElementById('fp-account').value.trim();
+    if (!account) { log('请输入账号', 'log-warn'); return; }
+    try {
+        const res = await api('GET', `/auth/security-questions/${account}`);
+        const items = res.data || [];
+        if (items.length === 0) {
+            log('该账号未设置密保问题', 'log-warn'); return;
+        }
+        const html = items.map((q, i) =>
+            `<p>${i + 1}. ${escHtml(q.question)}</p>
+             <input id="fp-a-${q.id}" placeholder="请输入答案" style="margin-bottom:8px;">`
+        ).join('');
+        document.getElementById('fp-questions').innerHTML = html;
+        window._fpItems = items;
+        document.getElementById('forgot-step1').style.display = 'none';
+        document.getElementById('forgot-step2').style.display = 'block';
+    } catch (e) {
+        log(`❌ 查询失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function resetPassword() {
+    const account = document.getElementById('fp-account').value.trim();
+    const newPwd = document.getElementById('fp-new-pwd').value;
+    if (!newPwd || newPwd.length < 6) { log('新密码至少6位', 'log-warn'); return; }
+    const items = window._fpItems || [];
+    const answers = items.map(q => ({
+        questionId: q.id,
+        answer: document.getElementById('fp-a-' + q.id)?.value?.trim() || ''
+    }));
+    if (answers.some(a => !a.answer)) { log('请回答所有密保问题', 'log-warn'); return; }
+    try {
+        await api('PUT', '/auth/reset-password', { account, answers, newPassword: newPwd });
+        log('✅ 密码已重置，请用新密码登录', 'log-success');
+        hideForgotPwd();
+        document.getElementById('login-account').value = account;
+        document.getElementById('login-password').value = newPwd;
+    } catch (e) {
+        log(`❌ 重置失败: ${e.message}`, 'log-error');
     }
 }
 
