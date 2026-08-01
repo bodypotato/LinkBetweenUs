@@ -34,6 +34,8 @@
         button.accept:hover { background: #00a844; }
         button.reject { background: #ff5252; }
         button.reject:hover { background: #d32f2f; }
+        button.warn { background: #ff9800; }
+        button.warn:hover { background: #e68900; }
 
         .row { display: flex; gap: 8px; }
         .row input { flex: 1; }
@@ -141,6 +143,25 @@
             flex: 1; display: flex; align-items: center; justify-content: center;
             color: #555; font-size: 1.1em; background: #0a0a1a;
         }
+
+        /* 群聊模式切换 */
+        .mode-tabs { display: flex; gap: 0; }
+        .mode-tab {
+            padding: 6px 16px; background: #0f3460; color: #888; border: none;
+            cursor: pointer; font-size: 0.82em; font-weight: 600; border-radius: 6px 6px 0 0;
+        }
+        .mode-tab.active { background: #e94560; color: white; }
+        .mode-tab:first-child { border-radius: 6px 0 0 0; }
+        .mode-tab:last-child { border-radius: 0 6px 0 0; }
+
+        /* 群聊会话列表 */
+        .group-conv-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 6px 8px; background: #1a1a2e; border-radius: 6px;
+            font-size: 0.82em; margin-bottom: 3px; cursor: pointer;
+        }
+        .group-conv-item:hover { background: #0f3460; }
+        .group-conv-item .gname { color: #4fc3f7; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -215,6 +236,47 @@
         <div id="online-list"><span style="color:#666;">点击刷新</span></div>
         <button onclick="refreshOnline()">刷新在线列表</button>
     </div>
+
+    <!-- 创建群 -->
+    <div class="card">
+        <h3>🏠 创建群</h3>
+        <input id="group-name" placeholder="群名称">
+        <input id="group-members" placeholder="初始成员账号(逗号分隔,可选)">
+        <button onclick="createGroup()">创建群</button>
+    </div>
+
+    <!-- 我的群列表 -->
+    <div class="card">
+        <h3>👥 我的群</h3>
+        <button onclick="refreshMyGroups()">刷新群列表</button>
+        <div id="group-list" style="max-height:120px;overflow-y:auto;"></div>
+    </div>
+
+    <!-- 入群 -->
+    <div class="card">
+        <h3>📥 加入群</h3>
+        <div class="row">
+            <input id="join-group-id" placeholder="群ID">
+            <input id="join-group-msg" placeholder="附言(可选)" style="flex:0.5;">
+        </div>
+        <button onclick="sendJoinRequest()">申请入群</button>
+    </div>
+
+    <!-- 待处理的入群申请（仅群主/管理员可见） -->
+    <div class="card" id="pending-requests-card" style="display:none;">
+        <h3>📨 待处理的入群申请</h3>
+        <div id="pending-join-list" style="max-height:100px;overflow-y:auto;"></div>
+    </div>
+
+    <!-- 当前群成员（选中群后显示） -->
+    <div class="card" id="group-members-card" style="display:none;">
+        <h3>👤 群成员</h3>
+        <div id="group-members-list" style="max-height:120px;overflow-y:auto;"></div>
+        <div class="row" style="margin-top:4px;">
+            <button class="small reject" onclick="leaveCurrentGroup()">退出群</button>
+            <button class="small reject" onclick="dismissCurrentGroup()">解散群</button>
+        </div>
+    </div>
 </div>
 
 <!-- 右侧：聊天 + 日志 -->
@@ -222,11 +284,19 @@
     <div id="chat-panel">
         <div id="chat-header">
             <h2>💬 聊天</h2>
+            <div class="mode-tabs">
+                <button class="mode-tab active" id="tab-private" onclick="switchChatMode('private')">私聊</button>
+                <button class="mode-tab" id="tab-group" onclick="switchChatMode('group')">群聊</button>
+            </div>
             <select id="conversation-select" onchange="onConversationChange()">
                 <option value="">-- 选择聊天对象 --</option>
             </select>
+            <select id="group-select" onchange="onGroupChange()" style="display:none;">
+                <option value="">-- 选择群聊 --</option>
+            </select>
             <span class="unread-badge" id="unread-badge">0</span>
             <button class="small" onclick="markCurrentAsRead()">标记已读</button>
+            <button class="small" id="btn-group-info" onclick="showGroupInfo()" style="display:none;">群信息</button>
         </div>
         <div id="load-more" style="display:none" onclick="loadMoreMessages()">↑ 点击加载更多…</div>
         <div id="messages">
@@ -257,6 +327,16 @@ let chatPages = {};          // account → 已加载的页数
 let chatHasMore = {};        // account → 是否还有更多
 let isLoadingMore = false;   // 防止滚动事件重复触发加载
 const PAGE_SIZE = 30;
+
+// 群聊状态
+let chatMode = 'private';           // 'private' | 'group'
+let currentGroupId = null;          // 当前选中的群ID
+let currentGroupName = '';          // 当前群名称
+let currentGroupOwner = '';         // 当前群群主
+let groupMessages = {};             // groupId → GroupMessageVO[]
+let groupPages = {};                // groupId → 已加载页数
+let groupHasMore = {};              // groupId → 是否还有更多
+let groupSubscriptions = {};        // groupId → stomp subscription (用于取消订阅)
 
 function now() {
     return new Date().toLocaleTimeString('zh-CN', { hour12: false });
@@ -365,10 +445,17 @@ function connectWS() {
             handleFriendNotification(notif);
         });
 
+        // 订阅群聊通知
+        stompClient.subscribe('/user/queue/group-notification', msg => {
+            const notif = JSON.parse(msg.body);
+            handleGroupNotification(notif);
+        });
+
         // 拉取离线消息
         fetchOfflineMessages();
         refreshOnline();
         refreshFriendList();
+        refreshMyGroups();
         refreshIncoming();
     };
 
@@ -858,6 +945,586 @@ async function removeFriend(friendAccount) {
     }
 }
 
+// ====== 群聊模式切换 ======
+function switchChatMode(mode) {
+    chatMode = mode;
+    document.getElementById('tab-private').className = 'mode-tab' + (mode === 'private' ? ' active' : '');
+    document.getElementById('tab-group').className = 'mode-tab' + (mode === 'group' ? ' active' : '');
+    document.getElementById('conversation-select').style.display = mode === 'private' ? '' : 'none';
+    document.getElementById('group-select').style.display = mode === 'group' ? '' : 'none';
+    document.getElementById('btn-group-info').style.display = mode === 'group' ? '' : 'none';
+
+    if (mode === 'private') {
+        currentGroupId = null;
+        currentGroupName = '';
+        onConversationChange();
+        document.getElementById('group-members-card').style.display = 'none';
+        document.getElementById('pending-requests-card').style.display = 'none';
+    } else {
+        currentChatAccount = '';
+        onGroupChange();
+    }
+}
+
+function onGroupChange() {
+    const select = document.getElementById('group-select');
+    const gid = select.value;
+    if (!gid) {
+        currentGroupId = null;
+        currentGroupName = '';
+        document.getElementById('messages').innerHTML = '<div class="empty-chat">👈 选择群聊开始</div>';
+        document.getElementById('group-members-card').style.display = 'none';
+        document.getElementById('pending-requests-card').style.display = 'none';
+        return;
+    }
+    if (Number(gid) === currentGroupId) return;
+
+    // 取消旧的群订阅
+    unsubscribeGroup(currentGroupId);
+
+    currentGroupId = Number(gid);
+    currentGroupName = select.options[select.selectedIndex].textContent;
+    groupMessages[currentGroupId] = [];
+    groupPages[currentGroupId] = 0;
+    groupHasMore[currentGroupId] = true;
+
+    // 订阅该群的广播
+    subscribeGroup(currentGroupId);
+
+    // 加载消息历史
+    loadGroupHistory(currentGroupId);
+    // 显示成员
+    refreshGroupMembers(currentGroupId);
+    // 如果有管理权限，显示待处理申请
+    refreshPendingJoinRequests(currentGroupId);
+    // 标记已读
+    markGroupAsRead(currentGroupId);
+}
+
+function subscribeGroup(groupId) {
+    if (!stompClient || !stompClient.connected || !groupId) return;
+    if (groupSubscriptions[groupId]) return;
+    const sub = stompClient.subscribe('/topic/group.' + groupId, msg => {
+        const vo = JSON.parse(msg.body);
+        handleGroupMessage(vo);
+    });
+    groupSubscriptions[groupId] = sub;
+}
+
+function unsubscribeGroup(groupId) {
+    if (groupSubscriptions[groupId]) {
+        groupSubscriptions[groupId].unsubscribe();
+        delete groupSubscriptions[groupId];
+    }
+}
+
+// ====== 群消息处理 ======
+function handleGroupMessage(vo) {
+    if (!groupMessages[vo.groupId]) groupMessages[vo.groupId] = [];
+    const exists = groupMessages[vo.groupId].some(m => m.id === vo.id);
+    if (!exists) {
+        groupMessages[vo.groupId].push(vo);
+    }
+    if (vo.groupId === currentGroupId && chatMode === 'group') {
+        renderGroupMessages();
+    }
+    updateGroupSelect();
+}
+
+function renderGroupMessages(preserveScroll) {
+    const container = document.getElementById('messages');
+    const msgs = groupMessages[currentGroupId] || [];
+
+    if (msgs.length === 0) {
+        container.innerHTML = '<div class="empty-chat">暂无消息，发送第一条吧 👋</div>';
+        return;
+    }
+
+    const oldHeight = container.scrollHeight;
+    const oldTop = container.scrollTop;
+
+    container.innerHTML = msgs.map(m => {
+        const isMine = m.fromAccount === myAccount;
+        const cls = isMine ? 'mine' : 'theirs';
+        const time = m.createTime ? new Date(m.createTime).toLocaleTimeString('zh-CN', {hour12: false}) : '';
+        return `<div class="msg-row ${cls}">
+            <div class="msg-bubble">${escHtml(m.content)}</div>
+            <div class="msg-meta">
+                <span>${time}</span>
+                ${!isMine ? `<span style="color:#4fc3f7;">${escHtml(m.fromName)}</span>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+
+    if (preserveScroll) {
+        container.scrollTop = oldTop + (container.scrollHeight - oldHeight);
+    } else {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+// 发送群消息
+function sendGroupMessage() {
+    const input = document.getElementById('chat-input');
+    const content = input.value.trim();
+    if (!content) return;
+    if (!currentGroupId) { log('请先选择群聊', 'log-warn'); return; }
+    if (!stompClient || !stompClient.connected) { log('WebSocket未连接', 'log-warn'); return; }
+
+    stompClient.publish({
+        destination: '/app/chat.group',
+        body: JSON.stringify({ groupId: currentGroupId, content: content })
+    });
+
+    input.value = '';
+    log(`📤 群消息已发送: groupId=${currentGroupId}, content=${content.substring(0, 30)}`, 'log-msg');
+}
+
+// 修改 sendChatMessage 以支持群聊模式
+const _origSendChatMessage = sendChatMessage;
+sendChatMessage = function() {
+    if (chatMode === 'group') {
+        sendGroupMessage();
+    } else {
+        _origSendChatMessage();
+    }
+};
+
+// 修改 markCurrentAsRead 以支持群聊
+const _origMarkCurrentAsRead = markCurrentAsRead;
+markCurrentAsRead = function() {
+    if (chatMode === 'group' && currentGroupId) {
+        markGroupAsRead(currentGroupId);
+    } else {
+        _origMarkCurrentAsRead();
+    }
+};
+
+// ====== 群 REST API ======
+
+async function createGroup() {
+    const name = document.getElementById('group-name').value.trim();
+    const membersStr = document.getElementById('group-members').value.trim();
+    if (!name) { log('请输入群名称', 'log-warn'); return; }
+    const members = membersStr ? membersStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+    try {
+        const res = await api('POST', '/group', { name, members });
+        log(`✅ 群创建成功: id=${res.data.id}, name=${res.data.name}, 成员数=${res.data.memberCount}`, 'log-success');
+        document.getElementById('group-name').value = '';
+        document.getElementById('group-members').value = '';
+        refreshMyGroups();
+    } catch (e) {
+        log(`❌ 创建群失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function refreshMyGroups() {
+    if (!myToken) return;
+    try {
+        const res = await api('GET', '/group');
+        const groups = res.data || [];
+        const container = document.getElementById('group-list');
+        if (groups.length === 0) {
+            container.innerHTML = '<span style="color:#666;">还没有群</span>';
+        } else {
+            container.innerHTML = groups.map(g =>
+                `<div class="group-conv-item" onclick="enterGroup(${g.id}, '${escHtml(g.name)}')">
+                    <span><span class="gname">🏠 ${escHtml(g.name)}</span> (${g.memberCount}人)</span>
+                </div>`
+            ).join('');
+        }
+        updateGroupSelect(groups);
+        log(`👥 群列表: ${groups.map(g => g.name).join(', ') || '无'}`, 'log-info');
+    } catch (e) {
+        log(`❌ 获取群列表失败: ${e.message}`, 'log-error');
+    }
+}
+
+function updateGroupSelect(groups) {
+    if (!groups) return;
+    const select = document.getElementById('group-select');
+    const currentVal = select.value;
+    let html = '<option value="">-- 选择群聊 --</option>';
+    for (const g of groups) {
+        const sel = String(g.id) === currentVal ? ' selected' : '';
+        html += `<option value="${g.id}"${sel}>🏠 ${escHtml(g.name)} (${g.memberCount}人)</option>`;
+    }
+    select.innerHTML = html;
+}
+
+function enterGroup(groupId, groupName) {
+    switchChatMode('group');
+    const select = document.getElementById('group-select');
+    select.value = groupId;
+    onGroupChange();
+}
+
+async function showGroupInfo() {
+    if (!currentGroupId) return;
+    try {
+        const res = await api('GET', `/group/${currentGroupId}`);
+        const g = res.data;
+        log(`📋 群信息: id=${g.id}, name=${g.name}, owner=${g.ownerName}(${g.owner}), ${g.memberCount}人`, 'log-info');
+    } catch (e) {
+        log(`❌ 获取群信息失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function refreshGroupMembers(groupId) {
+    if (!groupId) return;
+    try {
+        const [grpRes, memRes] = await Promise.all([
+            api('GET', `/group/${groupId}`),
+            api('GET', `/group/${groupId}/members`)
+        ]);
+        const g = grpRes.data;
+        currentGroupOwner = g.owner;
+        currentGroupName = g.name;
+
+        const members = memRes.data || [];
+        // 找到当前用户在本群的 role
+        const me = members.find(m => m.account === myAccount);
+        const myRole = me ? me.role : 2; // 0=owner, 1=admin, 2=member
+        const isOwner = myRole === 0;
+        const isAdminOrOwner = myRole <= 1;
+
+        const card = document.getElementById('group-members-card');
+        card.style.display = 'block';
+        const container = document.getElementById('group-members-list');
+        container.innerHTML = members.map(m => {
+            const isMuted = m.mutedUntil && new Date(m.mutedUntil).getTime() > Date.now();
+            const roleLabel = m.role === 0 ? '👑群主' : m.role === 1 ? '🛡️管理员' : '👤成员';
+            const muteIcon = isMuted ? ' 🔇' : '';
+
+            // 踢人按钮：群主可踢任何人(除自己)；管理员只能踢普通成员
+            let kickBtn = '';
+            if (myAccount !== m.account && m.role !== 0) { // 不能踢自己，不能踢群主
+                if (isOwner || (isAdminOrOwner && m.role === 2)) {
+                    kickBtn = `<button class="small reject" onclick="kickMember(${groupId},'${m.account}')">踢出</button>`;
+                }
+            }
+
+            // 提升/解除管理员：仅群主可见
+            const promoteBtn = (isOwner && m.role === 2)
+                ? `<button class="small accept" onclick="promoteMember(${groupId},'${m.account}')">升管理</button>`
+                : '';
+            const demoteBtn = (isOwner && m.role === 1)
+                ? `<button class="small warn" onclick="demoteMember(${groupId},'${m.account}')">解除管理</button>`
+                : '';
+
+            // 禁言/解禁：群主可对任何人(除自己)，管理员只能对普通成员
+            let muteBtn = '';
+            if (myAccount !== m.account && m.role !== 0) { // 不能禁言自己或群主
+                const canMute = isOwner || (isAdminOrOwner && m.role === 2);
+                if (canMute) {
+                    if (isMuted) {
+                        muteBtn = `<button class="small accept" onclick="unmuteMember(${groupId},'${m.account}')">解除禁言</button>`;
+                    } else {
+                        muteBtn = `<button class="small warn" onclick="showMuteDialog(${groupId},'${m.account}','${escHtml(m.name)}')">禁言</button>`;
+                    }
+                }
+            }
+
+            return `<div class="list-item">
+                <span>${roleLabel} ${escHtml(m.name)} (${m.account})${muteIcon} ${m.unreadCount > 0 ? '['+m.unreadCount+'未读]' : ''}</span>
+                <span class="actions">${promoteBtn}${demoteBtn}${muteBtn}${kickBtn}</span>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        log(`❌ 获取成员失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function kickMember(groupId, account) {
+    if (!confirm(`确认踢出 ${account}?`)) return;
+    try {
+        await api('PUT', `/group/${groupId}/kick/${account}`);
+        log(`👢 已踢出 ${account}`, 'log-warn');
+        refreshGroupMembers(groupId);
+    } catch (e) {
+        log(`❌ 踢出失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function promoteMember(groupId, account) {
+    try {
+        await api('PUT', `/group/${groupId}/promote/${account}`);
+        log(`⬆️ 已提升 ${account} 为管理员`, 'log-success');
+        refreshGroupMembers(groupId);
+    } catch (e) {
+        log(`❌ 提升失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function demoteMember(groupId, account) {
+    if (!confirm(`确认解除 ${account} 的管理员身份?`)) return;
+    try {
+        await api('PUT', `/group/${groupId}/demote/${account}`);
+        log(`⬇️ 已解除 ${account} 的管理员身份`, 'log-success');
+        refreshGroupMembers(groupId);
+    } catch (e) {
+        log(`❌ 解除失败: ${e.message}`, 'log-error');
+    }
+}
+
+function showMuteDialog(groupId, account, name) {
+    const minutes = prompt(`请输入禁言时长（分钟）：\n对 ${name} 禁言`, '10');
+    if (!minutes) return;
+    const mins = parseInt(minutes);
+    if (isNaN(mins) || mins < 1) {
+        log('❌ 请输入有效的禁言时长（至少1分钟）', 'log-error');
+        return;
+    }
+    muteMember(groupId, account, mins);
+}
+
+async function muteMember(groupId, account, minutes) {
+    try {
+        await api('PUT', `/group/${groupId}/mute/${account}`, { minutes });
+        log(`🔇 已禁言 ${account} ${minutes} 分钟`, 'log-success');
+        refreshGroupMembers(groupId);
+    } catch (e) {
+        log(`❌ 禁言失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function unmuteMember(groupId, account) {
+    try {
+        await api('PUT', `/group/${groupId}/unmute/${account}`);
+        log(`🔊 已解除 ${account} 的禁言`, 'log-success');
+        refreshGroupMembers(groupId);
+    } catch (e) {
+        log(`❌ 解除禁言失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function leaveCurrentGroup() {
+    if (!currentGroupId) return;
+    if (!confirm(`确认退出群 ${currentGroupName}?`)) return;
+    try {
+        await api('PUT', `/group/${currentGroupId}/leave`);
+        log(`🚪 已退出群: ${currentGroupName}`, 'log-warn');
+        unsubscribeGroup(currentGroupId);
+        currentGroupId = null;
+        document.getElementById('group-select').value = '';
+        document.getElementById('messages').innerHTML = '<div class="empty-chat">已退出群聊</div>';
+        document.getElementById('group-members-card').style.display = 'none';
+        refreshMyGroups();
+    } catch (e) {
+        log(`❌ 退出失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function dismissCurrentGroup() {
+    if (!currentGroupId) return;
+    if (!confirm(`确认解散群 ${currentGroupName}? 此操作不可撤销!`)) return;
+    try {
+        await api('DELETE', `/group/${currentGroupId}`);
+        log(`💥 群已解散: ${currentGroupName}`, 'log-error');
+        unsubscribeGroup(currentGroupId);
+        currentGroupId = null;
+        document.getElementById('group-select').value = '';
+        document.getElementById('messages').innerHTML = '<div class="empty-chat">群已解散</div>';
+        document.getElementById('group-members-card').style.display = 'none';
+        refreshMyGroups();
+    } catch (e) {
+        log(`❌ 解散群失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function sendJoinRequest() {
+    const groupId = document.getElementById('join-group-id').value.trim();
+    const message = document.getElementById('join-group-msg').value.trim();
+    if (!groupId) { log('请输入群ID', 'log-warn'); return; }
+    try {
+        await api('POST', `/group/${groupId}/join`, message ? { message } : {});
+        log(`📤 入群申请已发送: groupId=${groupId}`, 'log-success');
+        document.getElementById('join-group-id').value = '';
+        document.getElementById('join-group-msg').value = '';
+    } catch (e) {
+        log(`❌ 申请失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function refreshPendingJoinRequests(groupId) {
+    if (!groupId) return;
+    try {
+        const res = await api('GET', `/group/${groupId}/join/pending`);
+        const requests = res.data || [];
+        const card = document.getElementById('pending-requests-card');
+        const container = document.getElementById('pending-join-list');
+        if (requests.length === 0) {
+            card.style.display = 'none';
+        } else {
+            card.style.display = 'block';
+            container.innerHTML = requests.map(r =>
+                `<div class="list-item">
+                    <span><span class="name">${escHtml(r.fromName)}</span>(${r.fromAccount})${r.message ? ' — ' + escHtml(r.message) : ''}</span>
+                    <span class="actions">
+                        <button class="small accept" onclick="approveJoinRequest(${groupId},${r.id})">通过</button>
+                        <button class="small reject" onclick="rejectJoinRequest(${groupId},${r.id})">拒绝</button>
+                    </span>
+                </div>`
+            ).join('');
+        }
+    } catch (e) {
+        // 普通成员无权查看，静默忽略
+    }
+}
+
+async function approveJoinRequest(groupId, requestId) {
+    try {
+        await api('PUT', `/group/${groupId}/join/${requestId}/approve`);
+        log(`✅ 已通过入群申请 requestId=${requestId}`, 'log-success');
+        refreshPendingJoinRequests(groupId);
+        refreshGroupMembers(groupId);
+        refreshMyGroups();
+    } catch (e) {
+        log(`❌ 通过失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function rejectJoinRequest(groupId, requestId) {
+    try {
+        await api('PUT', `/group/${groupId}/join/${requestId}/reject`);
+        log(`❌ 已拒绝入群申请 requestId=${requestId}`, 'log-warn');
+        refreshPendingJoinRequests(groupId);
+    } catch (e) {
+        log(`❌ 拒绝失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function loadGroupHistory(groupId) {
+    try {
+        const page = groupPages[groupId] || 0;
+        const res = await api('GET', `/group/${groupId}/messages?page=${page}&size=${PAGE_SIZE}`);
+        const newMessages = res.data || [];
+
+        if (page === 0) {
+            groupMessages[groupId] = newMessages;
+        } else {
+            groupMessages[groupId] = [...newMessages, ...groupMessages[groupId]];
+        }
+
+        groupHasMore[groupId] = newMessages.length >= PAGE_SIZE;
+        if (chatMode === 'group' && groupId === currentGroupId) {
+            renderGroupMessages(page > 0);
+        }
+        log(`📜 加载群消息: groupId=${groupId}, ${groupMessages[groupId].length} 条`, 'log-info');
+    } catch (e) {
+        log(`❌ 加载群消息失败: ${e.message}`, 'log-error');
+    }
+}
+
+async function markGroupAsRead(groupId) {
+    try {
+        await api('PUT', `/group/${groupId}/read`);
+        log(`✅ 群消息已标记已读: groupId=${groupId}`, 'log-info');
+    } catch (e) {
+        // 静默忽略
+    }
+}
+
+function handleGroupNotification(notif) {
+    switch (notif.type) {
+        case 'GROUP_JOIN_REQUEST':
+            log(`📩 收到入群申请: ${notif.fromName || notif.fromAccount} 申请加入 ${notif.groupName}(id=${notif.groupId})`, 'log-friend');
+            if (currentGroupId === notif.groupId) refreshPendingJoinRequests(currentGroupId);
+            break;
+        case 'GROUP_JOIN_APPROVED':
+            log(`✅ 入群申请已通过: 你已加入 ${notif.groupName}(id=${notif.groupId})`, 'log-success');
+            refreshMyGroups();
+            break;
+        case 'GROUP_JOIN_REJECTED':
+            log(`❌ 入群申请已拒绝: ${notif.groupName}(id=${notif.groupId})`, 'log-warn');
+            break;
+        case 'GROUP_KICKED':
+            log(`👢 你已被踢出群: ${notif.groupName}(id=${notif.groupId})`, 'log-error');
+            if (currentGroupId === notif.groupId) {
+                unsubscribeGroup(currentGroupId);
+                currentGroupId = null;
+                document.getElementById('group-select').value = '';
+                document.getElementById('messages').innerHTML = '<div class="empty-chat">你已被踢出群聊</div>';
+                document.getElementById('group-members-card').style.display = 'none';
+            }
+            refreshMyGroups();
+            break;
+        case 'GROUP_REQUEST_HANDLED':
+            log(`🔄 入群申请已处理: ${notif.message} (来自 ${notif.fromAccount})`, 'log-info');
+            if (currentGroupId === notif.groupId) {
+                refreshPendingJoinRequests(currentGroupId);
+                refreshGroupMembers(currentGroupId);
+            }
+            break;
+        case 'GROUP_MEMBER_REMOVED':
+            log(`👤 ${notif.message || (notif.fromName + ' 被移出群聊')}`, 'log-info');
+            if (currentGroupId === notif.groupId) {
+                refreshGroupMembers(currentGroupId);
+            }
+            break;
+        case 'GROUP_MEMBER_LEFT':
+            log(`🚪 ${notif.message || (notif.fromName + ' 退出了群聊')}`, 'log-info');
+            if (currentGroupId === notif.groupId) {
+                refreshGroupMembers(currentGroupId);
+            }
+            break;
+        case 'GROUP_MEMBER_PROMOTED':
+            log(`⭐ ${notif.message || (notif.fromName + ' 被提升为管理员')}`, 'log-info');
+            if (currentGroupId === notif.groupId) {
+                refreshGroupMembers(currentGroupId);
+            }
+            break;
+        case 'GROUP_MEMBER_DEMOTED':
+            log(`⬇ ${notif.message || (notif.fromName + ' 的管理员身份被解除')}`, 'log-info');
+            if (currentGroupId === notif.groupId) {
+                refreshGroupMembers(currentGroupId);
+            }
+            break;
+        case 'GROUP_MEMBER_MUTED':
+            log(`🔇 ${notif.message || (notif.fromName + ' 被禁言')}`, 'log-info');
+            if (currentGroupId === notif.groupId) {
+                refreshGroupMembers(currentGroupId);
+            }
+            break;
+        case 'GROUP_MEMBER_UNMUTED':
+            log(`🔊 ${notif.message || (notif.fromName + ' 已解除禁言')}`, 'log-info');
+            if (currentGroupId === notif.groupId) {
+                refreshGroupMembers(currentGroupId);
+            }
+            break;
+        case 'GROUP_MEMBER_JOINED':
+            log(`🎉 ${notif.message || (notif.fromName + ' 加入了群聊')}`, 'log-info');
+            if (currentGroupId === notif.groupId) {
+                refreshGroupMembers(currentGroupId);
+            }
+            break;
+        case 'GROUP_DISMISSED':
+            log(`💔 群 ${notif.groupName}(id=${notif.groupId}) 已被解散`, 'log-error');
+            if (currentGroupId === notif.groupId) {
+                unsubscribeGroup(currentGroupId);
+                currentGroupId = null;
+                document.getElementById('group-select').value = '';
+                document.getElementById('messages').innerHTML = '<div class="empty-chat">该群已被解散</div>';
+                document.getElementById('group-members-card').style.display = 'none';
+            }
+            refreshMyGroups();
+            break;
+    }
+}
+
+// 消息区滚动：到顶部时加载更多（也支持群聊）
+const _origScrollHandler = document.getElementById('messages').onscroll;
+document.getElementById('messages').addEventListener('scroll', function() {
+    if (this.scrollTop <= 30) {
+        if (chatMode === 'group' && currentGroupId && groupHasMore[currentGroupId]) {
+            groupPages[currentGroupId]++;
+            loadGroupHistory(currentGroupId);
+        } else if (chatMode === 'private' && currentChatAccount && chatHasMore[currentChatAccount]) {
+            loadMoreMessages();
+        }
+    }
+});
+
 // ====== 在线列表 ======
 async function refreshOnline() {
     if (!myToken) { log('请先登录再查询在线列表', 'log-warn'); return; }
@@ -876,19 +1543,12 @@ async function refreshOnline() {
     }
 }
 
-// 消息区滚动：到顶部时加载更多
-document.getElementById('messages').addEventListener('scroll', function() {
-    if (this.scrollTop <= 30 && chatHasMore[currentChatAccount]) {
-        loadMoreMessages();
-    }
-});
-
 // 页面加载提示
 log('🚀 LinkBetweenUs 测试面板就绪', 'log-success');
 log('👉 先注册 → 登录 → 连接WebSocket', 'log-info');
-log('💡 开两个浏览器窗口，用不同账号登录测试好友+聊天功能', 'log-info');
-log('🔗 好友: 搜索 → 发好友请求 → 接受/拒绝', 'log-info');
-log('💬 聊天: 选择好友 → 发消息 → 实时接收 → 已读回执', 'log-info');
+log('💡 开两个浏览器窗口，用不同账号登录测试', 'log-info');
+log('🔗 私聊: 搜索 → 加好友 → 选择好友 → 发消息', 'log-info');
+log('👥 群聊: 创建群 → 申请入群 → 通过申请 → 群内发消息', 'log-info');
 </script>
 </body>
 </html>
