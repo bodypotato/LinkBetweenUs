@@ -30,7 +30,7 @@ public class AuthHandshakeInterceptor implements HandshakeInterceptor {
             HttpServletRequest httpRequest = servletRequest.getServletRequest();
             String token = httpRequest.getParameter("token");
 
-            if (token != null && jwtUtil.validateToken(token)) {
+            if (token != null && jwtUtil.validateTokenAndVersion(token)) {
                 String account = jwtUtil.getAccountFromToken(token);
                 attributes.put("account", account);
                 log.debug("WebSocket handshake OK: account={}", account);

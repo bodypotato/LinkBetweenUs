@@ -451,6 +451,14 @@ function connectWS() {
             handleGroupNotification(notif);
         });
 
+        // 订阅被顶号通知
+        stompClient.subscribe('/user/queue/kicked', msg => {
+            const data = JSON.parse(msg.body);
+            log(`⚠️ ${data.message || '账号在别处登录，你已被强制下线'}`, 'log-error');
+            alert(data.message || '账号在别处登录，你已被强制下线');
+            disconnectWS();
+        });
+
         // 拉取离线消息
         fetchOfflineMessages();
         refreshOnline();

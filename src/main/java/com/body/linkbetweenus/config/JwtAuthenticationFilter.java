@@ -45,7 +45,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (authHeader != null && authHeader.startsWith(BEARER_PREFIX)) {
             String token = authHeader.substring(BEARER_PREFIX.length());
 
-            if (jwtUtil.validateToken(token)) {
+            // 同时校验 token 签名和版本号（版本不匹配说明已被顶号）
+            if (jwtUtil.validateTokenAndVersion(token)) {
                 String account = jwtUtil.getAccountFromToken(token);
 
                 // 设置认证上下文 —— authorities 为空列表，群聊时通过 @PreAuthorize 补充角色

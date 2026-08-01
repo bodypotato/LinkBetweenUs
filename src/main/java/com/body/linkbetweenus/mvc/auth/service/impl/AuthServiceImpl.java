@@ -11,11 +11,13 @@ import com.body.linkbetweenus.mvc.mapper.UserMapper;
 import com.body.linkbetweenus.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +31,7 @@ public class AuthServiceImpl implements IAuthService {
     private final JwtUtil jwtUtil;
     private final RedisTemplate<String, Object> redisTemplate;
     private final AccountCacheService accountCacheService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Override
     public LoginResponse register(RegisterRequest request) {
@@ -47,8 +50,9 @@ public class AuthServiceImpl implements IAuthService {
 
         userMapper.insert(user);
 
-        // 生成JWT令牌
-        String token = jwtUtil.generateToken(user.getAccount());
+        // 递增 token 版本号并生成JWT令牌
+        long version = jwtUtil.incrementVersion(user.getAccount());
+        String token = jwtUtil.generateToken(user.getAccount(), version);
 
         // 将用户信息（不含密码）缓存到Redis
         cacheUserInfo(user);
@@ -73,8 +77,13 @@ public class AuthServiceImpl implements IAuthService {
             throw new RuntimeException("账号或密码错误");
         }
 
-        // 生成JWT令牌
-        String token = jwtUtil.generateToken(user.getAccount());
+        // 递增 token 版本号并生成JWT令牌（旧版本 token 立即失效，实现顶号）
+        long version = jwtUtil.incrementVersion(user.getAccount());
+        String token = jwtUtil.generateToken(user.getAccount(), version);
+
+        // 通知当前账号已有的 WebSocket 连接：你被踢了
+        messagingTemplate.convertAndSendToUser(user.getAccount(), "/queue/kicked",
+                Map.of("type", "KICKED", "message", "账号在别处登录，你已被强制下线"));
 
         // 将用户信息（不含密码）缓存到Redis
         cacheUserInfo(user);
