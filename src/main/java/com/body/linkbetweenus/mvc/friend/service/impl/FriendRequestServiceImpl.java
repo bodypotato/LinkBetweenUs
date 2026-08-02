@@ -7,6 +7,7 @@ import com.body.linkbetweenus.dto.FriendRequestVO;
 import com.body.linkbetweenus.entity.Friend;
 import com.body.linkbetweenus.entity.FriendRequest;
 import com.body.linkbetweenus.entity.User;
+import com.body.linkbetweenus.mvc.ai.service.DifyService;
 import com.body.linkbetweenus.mvc.friend.service.FriendRequestService;
 import com.body.linkbetweenus.mvc.mapper.FriendMapper;
 import com.body.linkbetweenus.mvc.mapper.FriendRequestMapper;
@@ -16,6 +17,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -33,6 +36,7 @@ public class FriendRequestServiceImpl implements FriendRequestService {
     private final FriendMapper friendMapper;
     private final UserMapper userMapper;
     private final SimpMessagingTemplate messagingTemplate;
+    private final DifyService difyService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -48,6 +52,15 @@ public class FriendRequestServiceImpl implements FriendRequestService {
         User targetUser = userMapper.selectById(toAccount);
         if (targetUser == null) {
             throw new RuntimeException("该用户不存在");
+        }
+
+        // 2.5. AI 机器人加好友秒通过 —— 不产生 PENDING 请求
+        if (difyService.isAiBot(toAccount)) {
+            if (!isAlreadyFriend(fromAccount, toAccount)) {
+                insertFriendship(fromAccount, toAccount);
+                log.info("已自动添加 AI 机器人为好友: user={}, bot={}", fromAccount, toAccount);
+            }
+            return;
         }
 
         // 3. 检查是否已经是好友
@@ -69,7 +82,7 @@ public class FriendRequestServiceImpl implements FriendRequestService {
             if (existing.getStatus() == FriendRequest.STATUS_ACCEPTED) {
                 throw new RuntimeException("你们已经是好友了");
             }
-            // STATUS_REJECTED: 允许重新发送，更新已有记录
+            // STATUS_REJECTED / STATUS_DISSOLVED: 允许重新发送，更新已有记录
             existing.setStatus(FriendRequest.STATUS_PENDING);
             existing.setMessage(request.getMessage());
             existing.setCreateTime(LocalDateTime.now());
@@ -92,17 +105,23 @@ public class FriendRequestServiceImpl implements FriendRequestService {
         // 5. 查发起方昵称
         User fromUser = userMapper.selectById(fromAccount);
         String fromName = fromUser != null ? fromUser.getName() : fromAccount;
+        String message = request.getMessage();
 
-        // 6. WebSocket 通知接收方
-        FriendNotificationDto notification = FriendNotificationDto.builder()
-                .type("FRIEND_REQUEST")
-                .requestId(requestId)
-                .fromAccount(fromAccount)
-                .fromName(fromName)
-                .message(request.getMessage())
-                .build();
-        messagingTemplate.convertAndSendToUser(toAccount, "/queue/friend-request", notification);
-        log.info("好友请求已发送: {} -> {}, requestId={}", fromAccount, toAccount, requestId);
+        // 6. 事务提交后再推送 WebSocket 通知，确保接收方刷新时能查到已提交的数据
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                FriendNotificationDto notification = FriendNotificationDto.builder()
+                        .type("FRIEND_REQUEST")
+                        .requestId(requestId)
+                        .fromAccount(fromAccount)
+                        .fromName(fromName)
+                        .message(message)
+                        .build();
+                messagingTemplate.convertAndSendToUser(toAccount, "/queue/friend-request", notification);
+                log.info("好友请求已发送: {} -> {}, requestId={}", fromAccount, toAccount, requestId);
+            }
+        });
     }
 
     @Override
@@ -140,18 +159,25 @@ public class FriendRequestServiceImpl implements FriendRequestService {
         // 插入好友关系（字典序）
         insertFriendship(fr.getFromAccount(), fr.getToAccount());
 
-        // 通知请求发起方
+        // 通知请求发起方（事务提交后推送，确保对方刷新时能查到已提交数据）
+        String fromAccount = fr.getFromAccount();
+        String toAccount = fr.getToAccount();
         User acceptor = userMapper.selectById(account);
         String acceptorName = acceptor != null ? acceptor.getName() : account;
 
-        FriendNotificationDto notification = FriendNotificationDto.builder()
-                .type("FRIEND_ACCEPTED")
-                .requestId(requestId)
-                .fromAccount(account)
-                .fromName(acceptorName)
-                .build();
-        messagingTemplate.convertAndSendToUser(fr.getFromAccount(), "/queue/friend-request", notification);
-        log.info("好友请求已接受: {} <-> {}, requestId={}", fr.getFromAccount(), fr.getToAccount(), requestId);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                FriendNotificationDto notification = FriendNotificationDto.builder()
+                        .type("FRIEND_ACCEPTED")
+                        .requestId(requestId)
+                        .fromAccount(account)
+                        .fromName(acceptorName)
+                        .build();
+                messagingTemplate.convertAndSendToUser(fromAccount, "/queue/friend-request", notification);
+                log.info("好友请求已接受: {} <-> {}, requestId={}", fromAccount, toAccount, requestId);
+            }
+        });
     }
 
     @Override
@@ -163,18 +189,25 @@ public class FriendRequestServiceImpl implements FriendRequestService {
         fr.setUpdateTime(LocalDateTime.now());
         friendRequestMapper.updateById(fr);
 
-        // 通知请求发起方
+        // 通知请求发起方（事务提交后推送，确保对方刷新时能查到已提交数据）
+        String fromAccount = fr.getFromAccount();
+        String toAccount = fr.getToAccount();
         User rejector = userMapper.selectById(account);
         String rejectorName = rejector != null ? rejector.getName() : account;
 
-        FriendNotificationDto notification = FriendNotificationDto.builder()
-                .type("FRIEND_REJECTED")
-                .requestId(requestId)
-                .fromAccount(account)
-                .fromName(rejectorName)
-                .build();
-        messagingTemplate.convertAndSendToUser(fr.getFromAccount(), "/queue/friend-request", notification);
-        log.info("好友请求已拒绝: {} -> {}, requestId={}", fr.getFromAccount(), fr.getToAccount(), requestId);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                FriendNotificationDto notification = FriendNotificationDto.builder()
+                        .type("FRIEND_REJECTED")
+                        .requestId(requestId)
+                        .fromAccount(account)
+                        .fromName(rejectorName)
+                        .build();
+                messagingTemplate.convertAndSendToUser(fromAccount, "/queue/friend-request", notification);
+                log.info("好友请求已拒绝: {} -> {}, requestId={}", fromAccount, toAccount, requestId);
+            }
+        });
     }
 
     // ===== 私有方法 =====

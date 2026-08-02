@@ -10,6 +10,7 @@ import com.body.linkbetweenus.mvc.friend.service.FriendService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -27,7 +28,7 @@ public class FriendController {
      */
     @GetMapping("/search")
     public Result<List<UserCacheVo>> searchUsers(
-            @RequestAttribute("account") String account,
+            @AuthenticationPrincipal String account,
             @RequestParam @NotBlank String keyword) {
         return Result.success(friendService.searchUsers(account, keyword));
     }
@@ -37,7 +38,7 @@ public class FriendController {
      */
     @PostMapping("/request")
     public Result<Void> sendFriendRequest(
-            @RequestAttribute("account") String account,
+            @AuthenticationPrincipal String account,
             @Valid @RequestBody FriendRequestSendRequest request) {
         friendRequestService.sendFriendRequest(account, request);
         return Result.success();
@@ -48,7 +49,7 @@ public class FriendController {
      */
     @GetMapping("/request/incoming")
     public Result<List<FriendRequestVO>> getIncomingRequests(
-            @RequestAttribute("account") String account) {
+            @AuthenticationPrincipal String account) {
         return Result.success(friendRequestService.getIncomingRequests(account));
     }
 
@@ -57,7 +58,7 @@ public class FriendController {
      */
     @GetMapping("/request/outgoing")
     public Result<List<FriendRequestVO>> getOutgoingRequests(
-            @RequestAttribute("account") String account) {
+            @AuthenticationPrincipal String account) {
         return Result.success(friendRequestService.getOutgoingRequests(account));
     }
 
@@ -66,7 +67,7 @@ public class FriendController {
      */
     @PutMapping("/request/{requestId}/accept")
     public Result<Void> acceptFriendRequest(
-            @RequestAttribute("account") String account,
+            @AuthenticationPrincipal String account,
             @PathVariable Long requestId) {
         friendRequestService.acceptFriendRequest(account, requestId);
         return Result.success();
@@ -77,7 +78,7 @@ public class FriendController {
      */
     @PutMapping("/request/{requestId}/reject")
     public Result<Void> rejectFriendRequest(
-            @RequestAttribute("account") String account,
+            @AuthenticationPrincipal String account,
             @PathVariable Long requestId) {
         friendRequestService.rejectFriendRequest(account, requestId);
         return Result.success();
@@ -88,7 +89,7 @@ public class FriendController {
      */
     @GetMapping
     public Result<List<FriendVO>> getFriendList(
-            @RequestAttribute("account") String account) {
+            @AuthenticationPrincipal String account) {
         return Result.success(friendService.getFriendList(account));
     }
 
@@ -97,7 +98,7 @@ public class FriendController {
      */
     @DeleteMapping("/{friendAccount}")
     public Result<Void> removeFriend(
-            @RequestAttribute("account") String account,
+            @AuthenticationPrincipal String account,
             @PathVariable String friendAccount) {
         friendService.removeFriend(account, friendAccount);
         return Result.success();

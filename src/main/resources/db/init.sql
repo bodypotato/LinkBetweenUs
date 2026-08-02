@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS LBU_Friend_Request (
     id           BIGINT       AUTO_INCREMENT PRIMARY KEY,
     from_account VARCHAR(32)  NOT NULL COMMENT '请求发起方账号',
     to_account   VARCHAR(32)  NOT NULL COMMENT '请求接收方账号',
-    status       TINYINT      NOT NULL DEFAULT 0 COMMENT '状态: 0=待处理, 1=已接受, 2=已拒绝',
+    status       TINYINT      NOT NULL DEFAULT 0 COMMENT '状态: 0=待处理, 1=已接受, 2=已拒绝, 3=好友已解除',
     message      VARCHAR(255) DEFAULT NULL COMMENT '附言',
     create_time  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     update_time  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

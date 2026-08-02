@@ -33,6 +33,17 @@ mybatis-plus:
     db-config:
       id-type: input
 
+# Dify AI 机器人配置
+dify:
+  enabled: ${DIFY_ENABLED:true}
+  base-url: ${DIFY_BASE_URL:}
+  api-key: ${DIFY_API_KEY:}
+  bot-account: ${DIFY_BOT_ACCOUNT:ai_bot}
+  bot-name: ${DIFY_BOT_NAME:AI小助手}
+  conversation-ttl: 30d
+  connect-timeout: 5s
+  read-timeout: 60s
+
 server:
   port: 8080
 

@@ -6,9 +6,15 @@ import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
+import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import org.springframework.web.socket.server.HandshakeHandler;
+import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
+
+import java.security.Principal;
+import java.util.Map;
 
 /**
  * WebSocket / STOMP 配置
@@ -38,7 +44,31 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
                 .setAllowedOriginPatterns("*")
-                .addInterceptors(authHandshakeInterceptor);
+                .addInterceptors(authHandshakeInterceptor)
+                .setHandshakeHandler(handshakeHandler());
+    }
+
+    /**
+     * 自定义握手处理器 —— 从握手拦截器存入的 attributes 中取出 account，
+     * 包装为 Principal 并绑定到 WebSocket 会话。
+     * <p>
+     * 这是 convertAndSendToUser() 能正确路由消息的关键：
+     * Spring 用会话的 Principal.name 来匹配目标用户。
+     */
+    private HandshakeHandler handshakeHandler() {
+        return new DefaultHandshakeHandler() {
+            @Override
+            protected Principal determineUser(
+                    org.springframework.http.server.ServerHttpRequest request,
+                    WebSocketHandler wsHandler,
+                    Map<String, Object> attributes) {
+                String account = (String) attributes.get("account");
+                if (account != null) {
+                    return () -> account;
+                }
+                return super.determineUser(request, wsHandler, attributes);
+            }
+        };
     }
 
     /**

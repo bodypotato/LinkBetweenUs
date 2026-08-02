@@ -27,7 +27,7 @@ public class FriendRequest {
     @TableField("to_account")
     private String toAccount;
 
-    /** 0=待处理, 1=已接受, 2=已拒绝 */
+    /** 0=待处理, 1=已接受, 2=已拒绝, 3=好友已解除 */
     @TableField
     private Integer status;
 
@@ -41,7 +41,8 @@ public class FriendRequest {
     private LocalDateTime updateTime;
 
     // --- 常量 ---
-    public static final int STATUS_PENDING  = 0;
-    public static final int STATUS_ACCEPTED = 1;
-    public static final int STATUS_REJECTED = 2;
+    public static final int STATUS_PENDING   = 0;
+    public static final int STATUS_ACCEPTED  = 1;
+    public static final int STATUS_REJECTED  = 2;
+    public static final int STATUS_DISSOLVED = 3;  // 好友已解除
 }

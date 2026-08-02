@@ -4,14 +4,18 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.body.linkbetweenus.dto.FriendVO;
 import com.body.linkbetweenus.dto.UserCacheVo;
 import com.body.linkbetweenus.entity.Friend;
+import com.body.linkbetweenus.entity.FriendRequest;
 import com.body.linkbetweenus.entity.User;
 import com.body.linkbetweenus.mvc.friend.service.FriendService;
 import com.body.linkbetweenus.mvc.mapper.FriendMapper;
+import com.body.linkbetweenus.mvc.mapper.FriendRequestMapper;
 import com.body.linkbetweenus.mvc.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -21,6 +25,7 @@ public class FriendServiceImpl implements FriendService {
 
     private final UserMapper userMapper;
     private final FriendMapper friendMapper;
+    private final FriendRequestMapper friendRequestMapper;
 
     @Override
     public List<UserCacheVo> searchUsers(String currentAccount, String keyword) {
@@ -90,5 +95,19 @@ public class FriendServiceImpl implements FriendService {
         }
 
         friendMapper.deleteById(friend.getId());
+
+        // 将两人之间已接受的好友请求标为"已解除"，允许后续重新发送
+        FriendRequest fr = friendRequestMapper.selectOne(
+                new LambdaQueryWrapper<FriendRequest>()
+                        .eq(FriendRequest::getStatus, FriendRequest.STATUS_ACCEPTED)
+                        .and(w -> w
+                                .eq(FriendRequest::getFromAccount, a).eq(FriendRequest::getToAccount, b)
+                                .or()
+                                .eq(FriendRequest::getFromAccount, b).eq(FriendRequest::getToAccount, a)));
+        if (fr != null) {
+            fr.setStatus(FriendRequest.STATUS_DISSOLVED);
+            fr.setUpdateTime(LocalDateTime.now());
+            friendRequestMapper.updateById(fr);
+        }
     }
 }

@@ -1,55 +1,38 @@
 package com.body.linkbetweenus.config;
 
-import com.body.linkbetweenus.common.Result;
 import com.body.linkbetweenus.util.JwtUtil;
-import tools.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
 
 /**
- * JWT 认证过滤器 —— 统一拦截所有 API 请求，校验 Authorization 头中的 Bearer Token。
+ * JWT 认证过滤器 —— 从 Authorization 头提取 Bearer Token，校验通过后设置 SecurityContext。
  * <p>
- * 校验通过后将 account 存入 request attribute，Controller 通过
- * {@code @RequestAttribute("account")} 即可获取当前用户账号，
- * 无需在每个方法中手动解析 token。
+ * 迁移说明：不再标注 @Component（避免 Servlet 容器自动注册导致双重过滤），
+ * 仅通过 {@link SecurityConfig#securityFilterChain} 注册到 Spring Security 过滤器链。
+ * 白名单逻辑已移至 SecurityConfig 的 permitAll() 配置。
  * <p>
- * 白名单路径（不拦截）：
- * <ul>
- *   <li>/api/auth/login, /api/auth/register — 登录注册</li>
- *   <li>/ws — WebSocket 握手，由 {@link AuthHandshakeInterceptor} 单独处理</li>
- *   <li>/error — Spring Boot 错误分发，避免递归拦截</li>
- * </ul>
+ * 校验通过后设置 {@link UsernamePasswordAuthenticationToken}（空 authorities），
+ * Controller 通过 {@code @AuthenticationPrincipal String account} 即可获取当前用户。
+ * 后续群聊模块通过 {@code @PreAuthorize} 添加角色即可扩展。
  */
-@Component
+@Slf4j
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
-    private final ObjectMapper objectMapper;
 
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String BEARER_PREFIX = "Bearer ";
-    private static final String ACCOUNT_ATTRIBUTE = "account";
-
-    private static final List<String> WHITELIST = List.of(
-            "/api/auth/",
-            "/ws",
-            "/error"
-    );
-
-    @Override
-    protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI();
-        return WHITELIST.stream().anyMatch(path::startsWith);
-    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -59,36 +42,29 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String authHeader = request.getHeader(AUTHORIZATION_HEADER);
 
-        // 缺少或不规范的 Authorization 头
-        if (authHeader == null || !authHeader.startsWith(BEARER_PREFIX)) {
-            writeUnauthorized(response, 401, "未登录或token格式错误");
-            return;
+        if (authHeader != null && authHeader.startsWith(BEARER_PREFIX)) {
+            String token = authHeader.substring(BEARER_PREFIX.length());
+
+            // 同时校验 token 签名和版本号（版本不匹配说明已被顶号）
+            if (jwtUtil.validateTokenAndVersion(token)) {
+                String account = jwtUtil.getAccountFromToken(token);
+
+                // 设置认证上下文 —— authorities 为空列表，群聊时通过 @PreAuthorize 补充角色
+                UsernamePasswordAuthenticationToken authentication =
+                        new UsernamePasswordAuthenticationToken(account, null, List.of());
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+
+                log.debug("JWT 认证成功: account={}", account);
+            }
         }
 
-        String token = authHeader.substring(BEARER_PREFIX.length());
-
-        // token 无效或已过期
-        if (!jwtUtil.validateToken(token)) {
-            writeUnauthorized(response, 401, "token已过期，请重新登录");
-            return;
+        // token 缺失或无效时不设置 SecurityContext，
+        // 后续 FilterSecurityInterceptor 会触发 AccessDeniedException，
+        // ExceptionTranslationFilter 将其转为 AuthenticationEntryPoint 的 401 响应
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            SecurityContextHolder.clearContext();
         }
-
-        // 校验通过：将 account 放入 request attribute，供 Controller 使用
-        String account = jwtUtil.getAccountFromToken(token);
-        request.setAttribute(ACCOUNT_ATTRIBUTE, account);
-        filterChain.doFilter(request, response);
-    }
-
-    /**
-     * 返回统一格式的 401 JSON 错误响应，与 {@link Result} 格式保持一致。
-     */
-    private void writeUnauthorized(HttpServletResponse response,
-                                   int code,
-                                   String message) throws IOException {
-        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write(
-                objectMapper.writeValueAsString(Result.error(code, message))
-        );
     }
 }
