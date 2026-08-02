@@ -7,6 +7,7 @@ import com.body.linkbetweenus.dto.FriendRequestVO;
 import com.body.linkbetweenus.entity.Friend;
 import com.body.linkbetweenus.entity.FriendRequest;
 import com.body.linkbetweenus.entity.User;
+import com.body.linkbetweenus.mvc.ai.service.DifyService;
 import com.body.linkbetweenus.mvc.friend.service.FriendRequestService;
 import com.body.linkbetweenus.mvc.mapper.FriendMapper;
 import com.body.linkbetweenus.mvc.mapper.FriendRequestMapper;
@@ -35,6 +36,7 @@ public class FriendRequestServiceImpl implements FriendRequestService {
     private final FriendMapper friendMapper;
     private final UserMapper userMapper;
     private final SimpMessagingTemplate messagingTemplate;
+    private final DifyService difyService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -50,6 +52,15 @@ public class FriendRequestServiceImpl implements FriendRequestService {
         User targetUser = userMapper.selectById(toAccount);
         if (targetUser == null) {
             throw new RuntimeException("该用户不存在");
+        }
+
+        // 2.5. AI 机器人加好友秒通过 —— 不产生 PENDING 请求
+        if (difyService.isAiBot(toAccount)) {
+            if (!isAlreadyFriend(fromAccount, toAccount)) {
+                insertFriendship(fromAccount, toAccount);
+                log.info("已自动添加 AI 机器人为好友: user={}, bot={}", fromAccount, toAccount);
+            }
+            return;
         }
 
         // 3. 检查是否已经是好友

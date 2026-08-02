@@ -162,6 +162,24 @@
         }
         .group-conv-item:hover { background: #0f3460; }
         .group-conv-item .gname { color: #4fc3f7; font-weight: 600; }
+
+        /* AI 机器人相关 */
+        .ai-bot-card { border: 1px solid #7c4dff; background: linear-gradient(135deg, #1a1a3e 0%, #0f3460 100%); }
+        .ai-bot-card h3 { color: #b388ff; }
+        .ai-bot-card button { background: #7c4dff; }
+        .ai-bot-card button:hover { background: #651fff; }
+        .bot-badge {
+            display: inline-block; background: #7c4dff; color: white; font-size: 0.7em;
+            padding: 1px 6px; border-radius: 8px; margin-left: 4px; vertical-align: middle;
+        }
+        .msg-bubble.ai-typing {
+            background: #2a2a4a; color: #888; font-style: italic; border-bottom-left-radius: 4px;
+            animation: typingPulse 1.5s ease-in-out infinite;
+        }
+        @keyframes typingPulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -260,6 +278,16 @@
         <div id="friend-list" style="max-height:150px;overflow-y:auto;"></div>
     </div>
 
+    <!-- AI 机器人 -->
+    <div class="card ai-bot-card">
+        <h3>🤖 AI 助手</h3>
+        <div id="ai-bot-status" style="font-size:0.82em;color:#aaa;">登录后可一键添加</div>
+        <div class="row">
+            <button id="btn-add-ai" onclick="addAiBot()" disabled>➕ 添加 AI 助手为好友</button>
+            <button id="btn-chat-ai" class="small accept" onclick="startChat(AI_BOT_ACCOUNT)" disabled>💬 聊天</button>
+        </div>
+    </div>
+
     <!-- 在线用户 -->
     <div class="card">
         <h3>🟢 在线用户</h3>
@@ -346,9 +374,11 @@
 <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7.0.0/bundles/stomp.umd.min.js"></script>
 <script>
 const API = 'http://localhost:8080/api';
+const AI_BOT_ACCOUNT = 'ai_bot';
 let stompClient = null;
 let myToken = '';
 let myAccount = '';
+let aiTypingMessageId = null;  // typing 指示器的临时 ID
 
 // 当前聊天状态
 let currentChatAccount = '';
@@ -422,6 +452,7 @@ async function doLogin() {
 
         document.getElementById('current-account').textContent = myAccount;
         document.getElementById('btn-connect').disabled = false;
+        document.getElementById('btn-add-ai').disabled = false;
         document.getElementById('security-card').style.display = 'block';
         loadMySecurity();
     } catch (e) {
@@ -647,6 +678,10 @@ async function fetchOfflineMessages() {
 // ====== 聊天消息处理 ======
 function handleIncomingMessage(vo) {
     log(`💬 收到消息: ${vo.fromName}(${vo.fromAccount}) → ${vo.content.substring(0, 30)}`, 'log-msg');
+    // 收到 AI 机器人的回复时，移除 typing 指示器
+    if (vo.fromAccount === AI_BOT_ACCOUNT) {
+        removeAiTyping();
+    }
     addMessageToCache(vo);
     if (vo.fromAccount === currentChatAccount) {
         renderMessages();
@@ -723,9 +758,30 @@ function sendChatMessage() {
     };
     if (!chatMessages[currentChatAccount]) chatMessages[currentChatAccount] = [];
     chatMessages[currentChatAccount].push(tempMsg);
+
+    // 发给 AI 机器人时，显示"正在输入…"气泡
+    if (currentChatAccount === AI_BOT_ACCOUNT) {
+        removeAiTyping(); // 移除旧的 typing 指示器
+        const typingMsg = {
+            id: '_ai_typing_', _typing: true,
+            fromAccount: AI_BOT_ACCOUNT, fromName: 'AI助手',
+            toAccount: myAccount, content: 'AI 正在思考中…',
+            status: 0, createTime: new Date().toISOString(), readTime: null
+        };
+        chatMessages[currentChatAccount].push(typingMsg);
+        aiTypingMessageId = '_ai_typing_';
+    }
+
     renderMessages();
     input.value = '';
     log(`📤 发送: → ${currentChatAccount} : ${content.substring(0, 30)}`, 'log-msg');
+}
+
+function removeAiTyping() {
+    aiTypingMessageId = null;
+    if (chatMessages[AI_BOT_ACCOUNT]) {
+        chatMessages[AI_BOT_ACCOUNT] = chatMessages[AI_BOT_ACCOUNT].filter(m => !m._typing);
+    }
 }
 
 // ====== 已读回执 ======
@@ -838,8 +894,11 @@ function renderMessages(preserveScroll) {
             else statusHtml = '<span class="msg-status sent">✓发送</span>';
         }
 
+        // AI typing 指示器使用特殊气泡样式
+        const bubbleClass = m._typing ? 'msg-bubble ai-typing' : 'msg-bubble';
+
         return `<div class="msg-row ${cls}">
-            <div class="msg-bubble">${escHtml(m.content)}</div>
+            <div class="${bubbleClass}">${escHtml(m.content)}</div>
             <div class="msg-meta">
                 ${isMine ? statusHtml : ''}
                 <span>${time}</span>
@@ -925,12 +984,15 @@ async function searchUsers() {
         if (users.length === 0) {
             container.innerHTML = '<span style="color:#666;">无匹配用户</span>';
         } else {
-            container.innerHTML = users.map(u =>
-                `<div class="list-item">
-                    <span><span class="name">${u.name}</span> (${u.account})</span>
-                    <button class="small" onclick="quickSendRequest('${u.account}')">加好友</button>
-                </div>`
-            ).join('');
+            container.innerHTML = users.map(u => {
+                const botBadge = u.account === AI_BOT_ACCOUNT ? '<span class="bot-badge">🤖AI</span>' : '';
+                const btnLabel = u.account === AI_BOT_ACCOUNT ? '🤖 添加AI助手' : '加好友';
+                const btnStyle = u.account === AI_BOT_ACCOUNT ? 'style="background:#7c4dff;"' : '';
+                return `<div class="list-item">
+                    <span><span class="name">${u.name}</span> (${u.account})${botBadge}</span>
+                    <button class="small" ${btnStyle} onclick="quickSendRequest('${u.account}')">${btnLabel}</button>
+                </div>`;
+            }).join('');
         }
         log(`🔍 搜索 "${keyword}": 找到 ${users.length} 个用户`, 'log-info');
     } catch (e) {
@@ -941,6 +1003,40 @@ async function searchUsers() {
 function quickSendRequest(account) {
     document.getElementById('fr-account').value = account;
     log(`👉 已填入目标账号: ${account}`, 'log-info');
+}
+
+// ====== AI 机器人 ======
+async function addAiBot() {
+    if (!myToken) { log('请先登录', 'log-warn'); return; }
+    try {
+        await api('POST', '/friend/request', { toAccount: AI_BOT_ACCOUNT, message: '添加AI助手' });
+        log(`🤖 AI 助手已添加为好友!`, 'log-success');
+        document.getElementById('btn-add-ai').disabled = true;
+        document.getElementById('btn-add-ai').textContent = '✅ 已是好友';
+        document.getElementById('btn-chat-ai').disabled = false;
+        document.getElementById('ai-bot-status').innerHTML = '<span style="color:#00e676;">✅ 已添加，可以开始聊天</span>';
+        refreshFriendList();
+    } catch (e) {
+        if (e.message && e.message.includes('已经是好友')) {
+            document.getElementById('btn-add-ai').disabled = true;
+            document.getElementById('btn-add-ai').textContent = '✅ 已是好友';
+            document.getElementById('btn-chat-ai').disabled = false;
+            document.getElementById('ai-bot-status').innerHTML = '<span style="color:#00e676;">✅ 已添加，可以开始聊天</span>';
+            log('🤖 AI 助手已经是你的好友', 'log-info');
+        } else {
+            log(`❌ 添加 AI 助手失败: ${e.message}`, 'log-error');
+        }
+    }
+}
+
+function checkAiBotFriend(friends) {
+    const isFriend = friends.some(f => f.account === AI_BOT_ACCOUNT);
+    document.getElementById('btn-add-ai').disabled = isFriend;
+    document.getElementById('btn-add-ai').textContent = isFriend ? '✅ 已是好友' : '➕ 添加 AI 助手为好友';
+    document.getElementById('btn-chat-ai').disabled = !isFriend;
+    document.getElementById('ai-bot-status').innerHTML = isFriend
+        ? '<span style="color:#00e676;">✅ 已添加，可以开始聊天</span>'
+        : '<span style="color:#aaa;">点击下方按钮一键添加</span>';
 }
 
 // ====== 好友请求 ======
@@ -1036,14 +1132,16 @@ async function refreshFriendList() {
         if (friends.length === 0) {
             container.innerHTML = '<span style="color:#666;">还没有好友</span>';
         } else {
-            container.innerHTML = friends.map(f =>
-                `<div class="list-item">
-                    <span><span class="name" onclick="startChat('${f.account}')" title="点击开始聊天">💬 ${f.name}</span> (${f.account})</span>
+            container.innerHTML = friends.map(f => {
+                const botBadge = f.account === AI_BOT_ACCOUNT ? '<span class="bot-badge">🤖AI</span>' : '';
+                return `<div class="list-item">
+                    <span><span class="name" onclick="startChat('${f.account}')" title="点击开始聊天">💬 ${f.name}</span> (${f.account})${botBadge}</span>
                     <button class="small reject" onclick="removeFriend('${f.account}')">删除</button>
-                </div>`
-            ).join('');
+                </div>`;
+            }).join('');
         }
         log(`👥 好友列表: ${friends.map(f => f.name).join(', ') || '无'}`, 'log-info');
+        checkAiBotFriend(friends);
         updateConversationSelect();
     } catch (e) {
         log(`❌ 获取好友列表失败: ${e.message}`, 'log-error');
@@ -1680,6 +1778,7 @@ async function refreshOnline() {
 log('🚀 LinkBetweenUs 测试面板就绪', 'log-success');
 log('👉 先注册 → 登录 → 连接WebSocket', 'log-info');
 log('💡 开两个浏览器窗口，用不同账号登录测试', 'log-info');
+log('🤖 AI助手: 登录后点击侧栏"添加 AI 助手"即可体验 Dify 智能对话', 'log-info');
 log('🔗 私聊: 搜索 → 加好友 → 选择好友 → 发消息', 'log-info');
 log('👥 群聊: 创建群 → 申请入群 → 通过申请 → 群内发消息', 'log-info');
 </script>

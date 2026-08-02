@@ -10,6 +10,7 @@ import com.body.linkbetweenus.entity.Friend;
 import com.body.linkbetweenus.entity.Message;
 import com.body.linkbetweenus.entity.User;
 import com.body.linkbetweenus.mvc.chat.service.MessageService;
+import com.body.linkbetweenus.mvc.ai.service.DifyService;
 import com.body.linkbetweenus.mvc.mapper.FriendMapper;
 import com.body.linkbetweenus.mvc.mapper.MessageMapper;
 import com.body.linkbetweenus.mvc.mapper.UserMapper;
@@ -19,6 +20,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -34,6 +37,7 @@ public class MessageServiceImpl implements MessageService {
     private final FriendMapper friendMapper;
     private final OnlineStatusService onlineStatusService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final DifyService difyService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -51,8 +55,8 @@ public class MessageServiceImpl implements MessageService {
             throw new RuntimeException("该用户不存在");
         }
 
-        // 3. 必须先成为好友
-        if (!isFriend(fromAccount, toAccount)) {
+        // 3. 必须先成为好友（AI 机器人除外）
+        if (!difyService.isAiBot(toAccount) && !isFriend(fromAccount, toAccount)) {
             throw new RuntimeException("你们还不是好友，无法发送消息");
         }
 
@@ -85,6 +89,20 @@ public class MessageServiceImpl implements MessageService {
 
         // 6. 发送 ack 给发送方
         messagingTemplate.convertAndSendToUser(fromAccount, "/queue/chat-ack", vo);
+
+        // 7. 发给 AI 机器人时，事务提交后异步调用 Dify 获取回复
+        if (difyService.isAiBot(toAccount)) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        difyService.handleBotMessageAsync(fromAccount, request.getContent());
+                    } catch (Exception e) {
+                        log.error("AI回复调度失败: user={}", fromAccount, e);
+                    }
+                }
+            });
+        }
 
         return vo;
     }
