@@ -40,6 +40,7 @@ import java.time.LocalDateTime;
 public class DifyServiceImpl implements DifyService {
 
     private static final String CONV_KEY_PREFIX = "dify:conv:";
+    private static final String BOT_NAME_KEY_PREFIX = "dify:bot-name:";
     private static final String FALLBACK_MSG = "AI服务暂时不可用，请稍后再试";
 
     private final DifyProperties difyProperties;
@@ -118,6 +119,38 @@ public class DifyServiceImpl implements DifyService {
         }
     }
 
+    @Override
+    public String getCustomBotName(String userAccount) {
+        String botAccount = difyProperties.getBotAccount();
+        String nameKey = BOT_NAME_KEY_PREFIX + botAccount + ":" + userAccount;
+        Object cached = redisTemplate.opsForValue().get(nameKey);
+        if (cached instanceof String s && StringUtils.hasText(s)) {
+            return s;
+        }
+        // 回退到全局默认名称
+        return resolveBotDisplayName(botAccount, difyProperties.getBotName(), userAccount);
+    }
+
+    @Override
+    public void setCustomBotName(String userAccount, String name) {
+        String botAccount = difyProperties.getBotAccount();
+        String nameKey = BOT_NAME_KEY_PREFIX + botAccount + ":" + userAccount;
+        redisTemplate.opsForValue().set(nameKey, name);
+        log.info("用户 {} 自定义 AI 名称为: {}", userAccount, name);
+    }
+
+    @Override
+    public void clearConversation(String userAccount) {
+        String botAccount = difyProperties.getBotAccount();
+        String convKey = CONV_KEY_PREFIX + botAccount + ":" + userAccount;
+        Boolean deleted = redisTemplate.delete(convKey);
+        if (Boolean.TRUE.equals(deleted)) {
+            log.info("用户 {} 清空了 AI 对话上下文", userAccount);
+        } else {
+            log.debug("用户 {} 清空 AI 上下文时无缓存", userAccount);
+        }
+    }
+
     /**
      * 将 AI 回复持久化为 Message 并推送给用户
      */
@@ -132,8 +165,8 @@ public class DifyServiceImpl implements DifyService {
                 .build();
         messageMapper.insert(msg);
 
-        // 获取机器人显示名称（优先用 DB 中的 name，其次用配置的 botName）
-        String displayName = resolveBotDisplayName(botAccount, botName);
+        // 获取机器人显示名称（优先用用户自定义名称，其次用 DB 中的 name，最后用配置的 botName）
+        String displayName = resolveBotDisplayName(botAccount, botName, userAccount);
         MessageVO vo = MessageVO.from(msg, displayName);
 
         // 用户在线则实时推送，不在线则等离线拉取
@@ -153,9 +186,20 @@ public class DifyServiceImpl implements DifyService {
     }
 
     /**
-     * 解析机器人显示名称：优先用 LBU_User 表中的 name，其次用配置的 botName
+     * 解析机器人显示名称：优先用用户自定义名 > LBU_User 表中的 name > 配置的 botName
      */
-    private String resolveBotDisplayName(String botAccount, String configBotName) {
+    private String resolveBotDisplayName(String botAccount, String configBotName, String userAccount) {
+        // 1. 检查用户自定义名称（Redis）
+        try {
+            String nameKey = BOT_NAME_KEY_PREFIX + botAccount + ":" + userAccount;
+            Object cached = redisTemplate.opsForValue().get(nameKey);
+            if (cached instanceof String s && StringUtils.hasText(s)) {
+                return s;
+            }
+        } catch (Exception ignored) {
+            // Redis 不可用时跳过
+        }
+        // 2. 检查 DB 中的全局名称
         try {
             User botUser = userMapper.selectById(botAccount);
             if (botUser != null && StringUtils.hasText(botUser.getName())) {
@@ -164,6 +208,7 @@ public class DifyServiceImpl implements DifyService {
         } catch (Exception ignored) {
             // 查询失败则用配置值
         }
+        // 3. 回退到配置文件中的名称
         return configBotName;
     }
 
