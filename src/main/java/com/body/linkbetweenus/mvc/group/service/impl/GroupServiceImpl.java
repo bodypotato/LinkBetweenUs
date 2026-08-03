@@ -170,6 +170,33 @@ public class GroupServiceImpl implements GroupService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void renameGroup(String account, Long groupId, String newName) {
+        Group group = groupMapper.selectById(groupId);
+        if (group == null) {
+            throw new RuntimeException("群不存在");
+        }
+
+        // 检查权限：群主或管理员才能改名
+        GroupMember member = groupMemberMapper.selectOne(
+                new LambdaQueryWrapper<GroupMember>()
+                        .eq(GroupMember::getGroupId, groupId)
+                        .eq(GroupMember::getAccount, account));
+        if (member == null) {
+            throw new RuntimeException("你不是该群成员");
+        }
+        if (member.getRole() != GroupMember.ROLE_OWNER && member.getRole() != GroupMember.ROLE_ADMIN) {
+            throw new RuntimeException("只有群主和管理员才能修改群名称");
+        }
+
+        String oldName = group.getName();
+        group.setName(newName);
+        groupMapper.updateById(group);
+
+        log.info("群名称已修改: id={}, {} -> {}, operator={}", groupId, oldName, newName, account);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public void dismissGroup(String account, Long groupId) {
         Group group = groupMapper.selectById(groupId);
         if (group == null) {

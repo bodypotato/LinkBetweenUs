@@ -29,6 +29,14 @@ public class Friend {
     @TableField("account_b")
     private String accountB;
 
+    /** account_a 给 account_b 的备注 */
+    @TableField("remark_by_a")
+    private String remarkByA;
+
+    /** account_b 给 account_a 的备注 */
+    @TableField("remark_by_b")
+    private String remarkByB;
+
     @TableField("create_time")
     private LocalDateTime createTime;
 }

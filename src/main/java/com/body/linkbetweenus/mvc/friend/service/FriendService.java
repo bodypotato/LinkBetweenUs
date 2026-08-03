@@ -21,4 +21,13 @@ public interface FriendService {
      * 删除/移除好友
      */
     void removeFriend(String account, String friendAccount);
+
+    /**
+     * 设置/修改好友备注
+     *
+     * @param account       当前用户账号
+     * @param friendAccount 好友账号
+     * @param remark        备注内容，传 null 或空字符串表示清除备注
+     */
+    void updateRemark(String account, String friendAccount, String remark);
 }

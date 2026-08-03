@@ -52,6 +52,15 @@ public class GroupController {
         return Result.success();
     }
 
+    /** 修改群名称（群主+管理员） */
+    @PutMapping("/{id}/name")
+    public Result<Void> renameGroup(@AuthenticationPrincipal String account,
+                                     @PathVariable Long id,
+                                     @Valid @RequestBody RenameGroupRequest request) {
+        groupService.renameGroup(account, id, request.getName());
+        return Result.success();
+    }
+
     // ===== 成员管理 =====
 
     /** 群成员列表 */

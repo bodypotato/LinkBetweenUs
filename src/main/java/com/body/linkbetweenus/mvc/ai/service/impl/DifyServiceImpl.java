@@ -1,5 +1,6 @@
 package com.body.linkbetweenus.mvc.ai.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.body.linkbetweenus.config.DifyProperties;
 import com.body.linkbetweenus.dto.MessageVO;
 import com.body.linkbetweenus.entity.Message;
@@ -142,13 +143,20 @@ public class DifyServiceImpl implements DifyService {
     @Override
     public void clearConversation(String userAccount) {
         String botAccount = difyProperties.getBotAccount();
+
+        // 1. 删除 Redis 中的 conversation_id，断开多轮对话上下文
         String convKey = CONV_KEY_PREFIX + botAccount + ":" + userAccount;
         Boolean deleted = redisTemplate.delete(convKey);
-        if (Boolean.TRUE.equals(deleted)) {
-            log.info("用户 {} 清空了 AI 对话上下文", userAccount);
-        } else {
-            log.debug("用户 {} 清空 AI 上下文时无缓存", userAccount);
-        }
+
+        // 2. 删除数据库中用户与 AI 之间的所有聊天记录
+        long msgDeleted = messageMapper.delete(new LambdaQueryWrapper<Message>()
+                .and(w -> w
+                        .eq(Message::getFromAccount, botAccount).eq(Message::getToAccount, userAccount)
+                        .or()
+                        .eq(Message::getFromAccount, userAccount).eq(Message::getToAccount, botAccount)));
+
+        log.info("用户 {} 清空了 AI 对话: 上下文={}, 消息记录={}条",
+                userAccount, Boolean.TRUE.equals(deleted) ? "已清除" : "无缓存", msgDeleted);
     }
 
     /**

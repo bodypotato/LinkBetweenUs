@@ -18,4 +18,7 @@ public interface GroupService {
 
     /** 解散群（仅群主） */
     void dismissGroup(String account, Long groupId);
+
+    /** 修改群名称（群主+管理员） */
+    void renameGroup(String account, Long groupId, String newName);
 }
