@@ -110,9 +110,15 @@ public class MessageServiceImpl implements MessageService {
     @Override
     public List<MessageVO> getChatHistory(String account, String otherAccount, int page, int size) {
         Page<Message> pageObj = new Page<>(page + 1, size);
+        // 对话记录：排除当前用户已软删除的消息
+        //   我发的 → 过滤 sender_deleted=0；我收的 → 过滤 receiver_deleted=0
         LambdaQueryWrapper<Message> wrapper = new LambdaQueryWrapper<Message>()
-                .and(w -> w.eq(Message::getFromAccount, account).eq(Message::getToAccount, otherAccount))
-                .or(w -> w.eq(Message::getFromAccount, otherAccount).eq(Message::getToAccount, account))
+                .and(w -> w.eq(Message::getFromAccount, account)
+                           .eq(Message::getToAccount, otherAccount)
+                           .eq(Message::getSenderDeleted, false))
+                .or(w -> w.eq(Message::getFromAccount, otherAccount)
+                           .eq(Message::getToAccount, account)
+                           .eq(Message::getReceiverDeleted, false))
                 .orderByAsc(Message::getCreateTime);
 
         Page<Message> result = messageMapper.selectPage(pageObj, wrapper);
@@ -170,11 +176,12 @@ public class MessageServiceImpl implements MessageService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public List<MessageVO> fetchOfflineMessages(String account) {
-        // 查找所有 status=SENT（未送达）的发给我的消息
+        // 查找所有 status=SENT（未送达）的发给我的消息（排除已软删除的）
         List<Message> messages = messageMapper.selectList(
                 new LambdaQueryWrapper<Message>()
                         .eq(Message::getToAccount, account)
                         .eq(Message::getStatus, Message.STATUS_SENT)
+                        .eq(Message::getReceiverDeleted, false)
                         .orderByAsc(Message::getCreateTime));
 
         if (messages.isEmpty()) {
@@ -207,12 +214,13 @@ public class MessageServiceImpl implements MessageService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int markAsRead(String account, String fromAccount) {
-        // 查找所有 fromAccount → account 且 status < READ 的消息
+        // 查找所有 fromAccount → account 且 status < READ、未被接收者删除的消息
         List<Message> unreadMessages = messageMapper.selectList(
                 new LambdaQueryWrapper<Message>()
                         .eq(Message::getFromAccount, fromAccount)
                         .eq(Message::getToAccount, account)
                         .lt(Message::getStatus, Message.STATUS_READ)
+                        .eq(Message::getReceiverDeleted, false)
                         .orderByAsc(Message::getCreateTime));
 
         if (unreadMessages.isEmpty()) {
@@ -245,6 +253,33 @@ public class MessageServiceImpl implements MessageService {
         messagingTemplate.convertAndSendToUser(fromAccount, "/queue/read-receipt", receipt);
 
         return count;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void softDeleteMessage(String account, Long messageId) {
+        Message msg = messageMapper.selectById(messageId);
+        if (msg == null) {
+            throw new RuntimeException("消息不存在");
+        }
+
+        boolean isSender = account.equals(msg.getFromAccount());
+        boolean isReceiver = account.equals(msg.getToAccount());
+
+        if (!isSender && !isReceiver) {
+            throw new RuntimeException("无权操作该消息");
+        }
+
+        if (isSender) {
+            msg.setSenderDeleted(true);
+        }
+        if (isReceiver) {
+            msg.setReceiverDeleted(true);
+        }
+        messageMapper.updateById(msg);
+
+        log.debug("消息软删除: id={}, account={}, role={}",
+                messageId, account, isSender ? "sender" : "receiver");
     }
 
     // ===== 私有工具方法 =====

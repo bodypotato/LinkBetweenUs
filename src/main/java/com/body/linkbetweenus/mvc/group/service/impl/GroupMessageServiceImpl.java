@@ -6,15 +6,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.body.linkbetweenus.dto.GroupConversationVO;
 import com.body.linkbetweenus.dto.GroupMessageVO;
 import com.body.linkbetweenus.dto.SendGroupMessageRequest;
-import com.body.linkbetweenus.entity.Group;
-import com.body.linkbetweenus.entity.GroupMember;
-import com.body.linkbetweenus.entity.GroupMessage;
-import com.body.linkbetweenus.entity.User;
+import com.body.linkbetweenus.entity.*;
 import com.body.linkbetweenus.mvc.group.service.GroupMessageService;
-import com.body.linkbetweenus.mvc.mapper.GroupMapper;
-import com.body.linkbetweenus.mvc.mapper.GroupMemberMapper;
-import com.body.linkbetweenus.mvc.mapper.GroupMessageMapper;
-import com.body.linkbetweenus.mvc.mapper.UserMapper;
+import com.body.linkbetweenus.mvc.mapper.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -31,6 +25,7 @@ import java.util.stream.Collectors;
 public class GroupMessageServiceImpl implements GroupMessageService {
 
     private final GroupMessageMapper groupMessageMapper;
+    private final GroupMessageDeleteMapper groupMessageDeleteMapper;
     private final GroupMapper groupMapper;
     private final GroupMemberMapper groupMemberMapper;
     private final UserMapper userMapper;
@@ -89,10 +84,11 @@ public class GroupMessageServiceImpl implements GroupMessageService {
     }
 
     @Override
-    public List<GroupMessageVO> getHistory(Long groupId, int page, int size) {
+    public List<GroupMessageVO> getHistory(Long groupId, String account, int page, int size) {
         Page<GroupMessage> pageObj = new Page<>(page + 1, size);
         LambdaQueryWrapper<GroupMessage> wrapper = new LambdaQueryWrapper<GroupMessage>()
                 .eq(GroupMessage::getGroupId, groupId)
+                .apply("NOT EXISTS (SELECT 1 FROM LBU_Group_Message_Delete d WHERE d.message_id = LBU_Group_Message.id AND d.account = {0})", account)
                 .orderByAsc(GroupMessage::getCreateTime);
 
         Page<GroupMessage> result = groupMessageMapper.selectPage(pageObj, wrapper);
@@ -148,6 +144,34 @@ public class GroupMessageServiceImpl implements GroupMessageService {
         groupMemberMapper.updateById(member);
 
         log.debug("群消息已读: account={}, groupId={}", account, groupId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void softDeleteMessage(String account, Long messageId) {
+        GroupMessage msg = groupMessageMapper.selectById(messageId);
+        if (msg == null) {
+            throw new RuntimeException("消息不存在");
+        }
+
+        // 检查是否为群成员
+        GroupMember member = groupMemberMapper.selectOne(
+                new LambdaQueryWrapper<GroupMember>()
+                        .eq(GroupMember::getGroupId, msg.getGroupId())
+                        .eq(GroupMember::getAccount, account));
+        if (member == null) {
+            throw new RuntimeException("你不是该群成员");
+        }
+
+        // 插入删除记录（UNIQUE KEY 保证不会重复）
+        GroupMessageDelete del = GroupMessageDelete.builder()
+                .messageId(messageId)
+                .account(account)
+                .createTime(LocalDateTime.now())
+                .build();
+        groupMessageDeleteMapper.insert(del);
+
+        log.debug("群消息软删除: messageId={}, account={}, groupId={}", messageId, account, msg.getGroupId());
     }
 
     // ===== 私有工具方法 =====

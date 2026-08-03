@@ -164,10 +164,20 @@ public class GroupController {
 
     /** 群消息历史 */
     @GetMapping("/{id}/messages")
-    public Result<List<GroupMessageVO>> getHistory(@PathVariable Long id,
+    public Result<List<GroupMessageVO>> getHistory(@AuthenticationPrincipal String account,
+                                                   @PathVariable Long id,
                                                    @RequestParam(defaultValue = "0") int page,
                                                    @RequestParam(defaultValue = "50") int size) {
-        return Result.success(groupMessageService.getHistory(id, page, size));
+        return Result.success(groupMessageService.getHistory(id, account, page, size));
+    }
+
+    /** 软删除一条群消息（仅标记当前用户不可见） */
+    @PutMapping("/{id}/message/{messageId}/delete")
+    public Result<Void> softDeleteMessage(@AuthenticationPrincipal String account,
+                                           @PathVariable Long id,
+                                           @PathVariable Long messageId) {
+        groupMessageService.softDeleteMessage(account, messageId);
+        return Result.success();
     }
 
     /** 群会话列表 */
