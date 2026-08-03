@@ -68,15 +68,50 @@ public class FriendServiceImpl implements FriendService {
         Map<String, User> userMap = userMapper.selectBatchIds(friendAccounts).stream()
                 .collect(Collectors.toMap(User::getAccount, u -> u));
 
+        // 构建 account → Friend 映射，用于提取备注
+        Map<String, Friend> friendMap = friendships.stream()
+                .collect(Collectors.toMap(
+                        f -> account.equals(f.getAccountA()) ? f.getAccountB() : f.getAccountA(),
+                        f -> f));
+
         return friendAccounts.stream()
                 .map(fa -> {
                     User user = userMap.get(fa);
+                    Friend f = friendMap.get(fa);
+                    String remark = null;
+                    if (f != null) {
+                        remark = account.equals(f.getAccountA()) ? f.getRemarkByA() : f.getRemarkByB();
+                    }
                     return FriendVO.builder()
                             .account(fa)
                             .name(user != null ? user.getName() : fa)
+                            .remark(remark)
                             .build();
                 })
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateRemark(String account, String friendAccount, String remark) {
+        String a = account.compareTo(friendAccount) < 0 ? account : friendAccount;
+        String b = account.compareTo(friendAccount) < 0 ? friendAccount : account;
+
+        Friend friend = friendMapper.selectOne(
+                new LambdaQueryWrapper<Friend>()
+                        .eq(Friend::getAccountA, a)
+                        .eq(Friend::getAccountB, b));
+
+        if (friend == null) {
+            throw new RuntimeException("你们还不是好友");
+        }
+
+        if (account.equals(friend.getAccountA())) {
+            friend.setRemarkByA(remark);
+        } else {
+            friend.setRemarkByB(remark);
+        }
+        friendMapper.updateById(friend);
     }
 
     @Override

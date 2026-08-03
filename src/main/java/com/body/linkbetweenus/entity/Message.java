@@ -40,6 +40,14 @@ public class Message {
     @TableField("read_time")
     private LocalDateTime readTime;
 
+    /** 发送者是否已删除（软删除） */
+    @TableField("sender_deleted")
+    private Boolean senderDeleted;
+
+    /** 接收者是否已删除（软删除） */
+    @TableField("receiver_deleted")
+    private Boolean receiverDeleted;
+
     // --- 常量 ---
     public static final int STATUS_SENT      = 0;
     public static final int STATUS_DELIVERED = 1;

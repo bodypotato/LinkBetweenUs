@@ -1,10 +1,7 @@
 package com.body.linkbetweenus.mvc.friend.controller;
 
 import com.body.linkbetweenus.common.Result;
-import com.body.linkbetweenus.dto.FriendRequestSendRequest;
-import com.body.linkbetweenus.dto.FriendRequestVO;
-import com.body.linkbetweenus.dto.FriendVO;
-import com.body.linkbetweenus.dto.UserCacheVo;
+import com.body.linkbetweenus.dto.*;
 import com.body.linkbetweenus.mvc.friend.service.FriendRequestService;
 import com.body.linkbetweenus.mvc.friend.service.FriendService;
 import jakarta.validation.Valid;
@@ -101,6 +98,18 @@ public class FriendController {
             @AuthenticationPrincipal String account,
             @PathVariable String friendAccount) {
         friendService.removeFriend(account, friendAccount);
+        return Result.success();
+    }
+
+    /**
+     * 设置/修改好友备注
+     */
+    @PutMapping("/{friendAccount}/remark")
+    public Result<Void> updateRemark(
+            @AuthenticationPrincipal String account,
+            @PathVariable String friendAccount,
+            @Valid @RequestBody UpdateRemarkRequest request) {
+        friendService.updateRemark(account, friendAccount, request.getRemark());
         return Result.success();
     }
 }

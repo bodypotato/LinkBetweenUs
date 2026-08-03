@@ -32,4 +32,12 @@ public interface MessageService {
      * 标记来自某用户的所有未读消息为已读，并推送已读回执
      */
     int markAsRead(String account, String fromAccount);
+
+    /**
+     * 软删除一条消息（仅标记当前用户视角下不可见，对方不受影响）
+     *
+     * @param account   当前用户账号
+     * @param messageId 消息 ID
+     */
+    void softDeleteMessage(String account, Long messageId);
 }

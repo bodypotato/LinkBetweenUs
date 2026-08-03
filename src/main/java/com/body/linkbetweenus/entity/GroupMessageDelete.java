@@ -15,27 +15,17 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("LBU_Friend")
-public class Friend {
+@TableName("LBU_Group_Message_Delete")
+public class GroupMessageDelete {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** 字典序较小的账号 */
-    @TableField("account_a")
-    private String accountA;
+    @TableField("message_id")
+    private Long messageId;
 
-    /** 字典序较大的账号 */
-    @TableField("account_b")
-    private String accountB;
-
-    /** account_a 给 account_b 的备注 */
-    @TableField("remark_by_a")
-    private String remarkByA;
-
-    /** account_b 给 account_a 的备注 */
-    @TableField("remark_by_b")
-    private String remarkByB;
+    @TableField
+    private String account;
 
     @TableField("create_time")
     private LocalDateTime createTime;

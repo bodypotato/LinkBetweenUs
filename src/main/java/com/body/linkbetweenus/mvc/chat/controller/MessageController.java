@@ -60,4 +60,15 @@ public class MessageController {
         int count = messageService.markAsRead(account, fromAccount);
         return Result.success(count);
     }
+
+    /**
+     * 软删除一条消息（仅标记当前用户不可见，对方不受影响）
+     */
+    @PutMapping("/{messageId}/delete")
+    public Result<Void> softDeleteMessage(
+            @AuthenticationPrincipal String account,
+            @PathVariable Long messageId) {
+        messageService.softDeleteMessage(account, messageId);
+        return Result.success();
+    }
 }
