@@ -25,6 +25,11 @@ spring:
   cache:
     type: redis
 
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 60MB
+
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
@@ -46,6 +51,9 @@ dify:
 
 server:
   port: 8080
+
+app:
+  upload-dir: uploads
 
 # JWT配置
 jwt:

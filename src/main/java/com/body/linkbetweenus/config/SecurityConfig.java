@@ -59,6 +59,8 @@ public class SecurityConfig {
                 // 路径权限
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**", "/ws/**", "/error").permitAll()
+                        // 文件下载/缩略图：浏览器 <img>/<video>/<audio> 标签不带 Authorization 头
+                        .requestMatchers(HttpMethod.GET, "/api/file/*/download", "/api/file/*/thumbnail").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated())
 
