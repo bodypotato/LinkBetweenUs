@@ -9,7 +9,7 @@ import org.springframework.cache.annotation.EnableCaching;
 @SpringBootApplication
 @MapperScan("com.body.linkbetweenus.mvc.mapper")
 @EnableCaching
-public class LinkBetweenUsApplication {
+public class LinkBetweenUsApplication{
 
     public static void main(String[] args) {
         SpringApplication.run(LinkBetweenUsApplication.class, args);

@@ -70,39 +70,39 @@ public class MessageServiceImpl implements MessageService {
                 .build();
         messageMapper.insert(message);
 
-        // 4. 查发送方昵称
+        // 查发送方昵称
         User fromUser = userMapper.selectById(fromAccount);
         String fromName = fromUser != null ? fromUser.getName() : fromAccount;
 
         MessageVO vo = MessageVO.from(message, fromName);
 
-        // 5. 如果接收方在线，推送到 /user/{toAccount}/queue/private，并更新状态为已送达
-        if (onlineStatusService.isOnline(toAccount)) {
-            messagingTemplate.convertAndSendToUser(toAccount, "/queue/private", vo);
-            message.setStatus(Message.STATUS_DELIVERED);
-            messageMapper.updateById(message);
-            vo.setStatus(Message.STATUS_DELIVERED);
-            log.info("消息实时推送: {} -> {}, msgId={}", fromAccount, toAccount, message.getId());
-        } else {
-            log.info("消息已落库(对方离线): {} -> {}, msgId={}", fromAccount, toAccount, message.getId());
-        }
+        // STOMP 推送移到 afterCommit —— 确保 DB 提交后客户端才收到，
+        // 避免客户端立即调 loadConversations/markAsRead 时查到未提交的数据
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                if (onlineStatusService.isOnline(toAccount)) {
+                    message.setStatus(Message.STATUS_DELIVERED);
+                    messageMapper.updateById(message);
+                    vo.setStatus(Message.STATUS_DELIVERED);
+                    messagingTemplate.convertAndSendToUser(toAccount, "/queue/private", vo);
+                    log.info("消息实时推送: {} -> {}, msgId={}", fromAccount, toAccount, message.getId());
+                } else {
+                    log.info("消息已落库(对方离线): {} -> {}, msgId={}", fromAccount, toAccount, message.getId());
+                }
+                // 发送 ack 给发送方（也在提交后，保证状态一致）
+                messagingTemplate.convertAndSendToUser(fromAccount, "/queue/chat-ack", vo);
 
-        // 6. 发送 ack 给发送方
-        messagingTemplate.convertAndSendToUser(fromAccount, "/queue/chat-ack", vo);
-
-        // 7. 发给 AI 机器人时，事务提交后异步调用 Dify 获取回复
-        if (difyService.isAiBot(toAccount)) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
+                // 发给 AI 机器人时异步调用 Dify 获取回复
+                if (difyService.isAiBot(toAccount)) {
                     try {
                         difyService.handleBotMessageAsync(fromAccount, request.getContent());
                     } catch (Exception e) {
                         log.error("AI回复调度失败: user={}", fromAccount, e);
                     }
                 }
-            });
-        }
+            }
+        });
 
         return vo;
     }
