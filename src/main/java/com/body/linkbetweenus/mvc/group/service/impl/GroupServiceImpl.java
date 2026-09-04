@@ -85,6 +85,30 @@ public class GroupServiceImpl implements GroupService {
                 new LambdaQueryWrapper<GroupMember>()
                         .eq(GroupMember::getGroupId, group.getId()));
 
+        // 收集所有成员（含群主），事务提交后通知大家刷新群列表 ——
+        // 覆盖 LBU_agent 代替用户建群的场景
+        List<String> allAccounts = groupMemberMapper.selectList(
+                new LambdaQueryWrapper<GroupMember>()
+                        .eq(GroupMember::getGroupId, group.getId()))
+                .stream().map(GroupMember::getAccount).collect(Collectors.toList());
+        long groupId = group.getId();
+        String groupName = group.getName();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                GroupNotificationDto notification = GroupNotificationDto.builder()
+                        .type("GROUP_CREATED")
+                        .groupId(groupId)
+                        .groupName(groupName)
+                        .fromAccount(ownerAccount)
+                        .fromName(ownerName)
+                        .build();
+                for (String acc : allAccounts) {
+                    messagingTemplate.convertAndSendToUser(acc, "/queue/group-notification", notification);
+                }
+            }
+        });
+
         log.info("群创建成功: id={}, name={}, owner={}, memberCount={}", group.getId(), group.getName(), ownerAccount, memberCount);
 
         return GroupVO.builder()
@@ -191,6 +215,27 @@ public class GroupServiceImpl implements GroupService {
         String oldName = group.getName();
         group.setName(newName);
         groupMapper.updateById(group);
+
+        // 通知所有成员刷新群列表 —— 覆盖 LBU_agent 代替用户改群名的场景
+        List<String> memberAccounts = groupMemberMapper.selectList(
+                new LambdaQueryWrapper<GroupMember>()
+                        .eq(GroupMember::getGroupId, groupId))
+                .stream().map(GroupMember::getAccount).collect(Collectors.toList());
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                GroupNotificationDto notification = GroupNotificationDto.builder()
+                        .type("GROUP_RENAMED")
+                        .groupId(groupId)
+                        .groupName(newName)
+                        .fromAccount(account)
+                        .message(oldName)
+                        .build();
+                for (String acc : memberAccounts) {
+                    messagingTemplate.convertAndSendToUser(acc, "/queue/group-notification", notification);
+                }
+            }
+        });
 
         log.info("群名称已修改: id={}, {} -> {}, operator={}", groupId, oldName, newName, account);
     }

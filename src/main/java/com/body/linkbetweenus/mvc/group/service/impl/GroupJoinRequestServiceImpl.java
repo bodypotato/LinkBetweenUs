@@ -111,6 +111,14 @@ public class GroupJoinRequestServiceImpl implements GroupJoinRequestService {
                 for (GroupMember admin : admins) {
                     messagingTemplate.convertAndSendToUser(admin.getAccount(), "/queue/group-notification", notification);
                 }
+                // 同时通知申请人本人 —— 覆盖 LBU_agent 代替用户申请入群的场景
+                GroupNotificationDto selfNotification = GroupNotificationDto.builder()
+                        .type("GROUP_JOIN_REQUEST_SENT")
+                        .groupId(groupId)
+                        .groupName(groupName)
+                        .requestId(requestId)
+                        .build();
+                messagingTemplate.convertAndSendToUser(fromAccount, "/queue/group-notification", selfNotification);
                 log.info("入群申请已发送: account={}, groupId={}, requestId={}", fromAccount, groupId, requestId);
             }
         });

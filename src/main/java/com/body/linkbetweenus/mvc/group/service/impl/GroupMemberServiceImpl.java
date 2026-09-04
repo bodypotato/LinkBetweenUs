@@ -392,10 +392,10 @@ public class GroupMemberServiceImpl implements GroupMemberService {
                         .message(leaveName + " 退出了群聊")
                         .build();
                 for (String acc : memberAccounts) {
-                    if (!acc.equals(account)) {
-                        messagingTemplate.convertAndSendToUser(acc, "/queue/group-notification", notification);
-                    }
+                    messagingTemplate.convertAndSendToUser(acc, "/queue/group-notification", notification);
                 }
+                // 退群者本人在 memberAccounts 删除前已收集，也会收到 ——
+                // 其前端收到 GROUP_MEMBER_LEFT 后刷新群列表，覆盖 LBU_agent 代替用户退群的场景
                 log.info("用户退出群: account={}, groupId={}", account, groupId);
             }
         });

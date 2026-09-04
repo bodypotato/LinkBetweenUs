@@ -1,6 +1,7 @@
 package com.body.linkbetweenus.mvc.friend.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.body.linkbetweenus.dto.FriendNotificationDto;
 import com.body.linkbetweenus.dto.FriendVO;
 import com.body.linkbetweenus.dto.UserCacheVo;
 import com.body.linkbetweenus.entity.Friend;
@@ -11,14 +12,19 @@ import com.body.linkbetweenus.mvc.mapper.FriendMapper;
 import com.body.linkbetweenus.mvc.mapper.FriendRequestMapper;
 import com.body.linkbetweenus.mvc.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FriendServiceImpl implements FriendService {
@@ -26,6 +32,7 @@ public class FriendServiceImpl implements FriendService {
     private final UserMapper userMapper;
     private final FriendMapper friendMapper;
     private final FriendRequestMapper friendRequestMapper;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Override
     public List<UserCacheVo> searchUsers(String currentAccount, String keyword) {
@@ -112,6 +119,22 @@ public class FriendServiceImpl implements FriendService {
             friend.setRemarkByB(remark);
         }
         friendMapper.updateById(friend);
+
+        // 事务提交后通知本人 —— 覆盖 LBU_agent 代替用户改备注的场景
+        User friendUser = userMapper.selectById(friendAccount);
+        String friendName = friendUser != null ? friendUser.getName() : friendAccount;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                FriendNotificationDto notification = FriendNotificationDto.builder()
+                        .type("REMARK_UPDATED")
+                        .fromAccount(friendAccount)
+                        .fromName(friendName)
+                        .message(remark)
+                        .build();
+                messagingTemplate.convertAndSendToUser(account, "/queue/friend-request", notification);
+            }
+        });
     }
 
     @Override
@@ -144,5 +167,31 @@ public class FriendServiceImpl implements FriendService {
             fr.setUpdateTime(LocalDateTime.now());
             friendRequestMapper.updateById(fr);
         }
+
+        // 事务提交后通知双方 —— 覆盖 LBU_agent 代替用户删好友的场景
+        User operator = userMapper.selectById(account);
+        String operatorName = operator != null ? operator.getName() : account;
+        User removed = userMapper.selectById(friendAccount);
+        String removedName = removed != null ? removed.getName() : friendAccount;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                // 操作者本人：好友列表移除对方
+                FriendNotificationDto selfNotification = FriendNotificationDto.builder()
+                        .type("FRIEND_REMOVED")
+                        .fromAccount(friendAccount)
+                        .fromName(removedName)
+                        .build();
+                messagingTemplate.convertAndSendToUser(account, "/queue/friend-request", selfNotification);
+                // 被删除方：好友列表移除操作者
+                FriendNotificationDto peerNotification = FriendNotificationDto.builder()
+                        .type("FRIEND_REMOVED")
+                        .fromAccount(account)
+                        .fromName(operatorName)
+                        .build();
+                messagingTemplate.convertAndSendToUser(friendAccount, "/queue/friend-request", peerNotification);
+                log.info("好友已删除: {} <-> {}", account, friendAccount);
+            }
+        });
     }
 }

@@ -62,6 +62,20 @@ public class FriendRequestServiceImpl implements FriendRequestService {
                 insertFriendship(fromAccount, toAccount);
                 log.info("已自动添加 AI 机器人为好友: user={}, bot={}", fromAccount, toAccount);
             }
+            // 通知发起方本人（覆盖 LBU_agent 代替用户添加机器人的场景）
+            User botUser = userMapper.selectById(toAccount);
+            String botName = botUser != null ? botUser.getName() : toAccount;
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    FriendNotificationDto notification = FriendNotificationDto.builder()
+                            .type("FRIEND_REQUEST_SENT")
+                            .fromAccount(toAccount)
+                            .fromName(botName)
+                            .build();
+                    messagingTemplate.convertAndSendToUser(fromAccount, "/queue/friend-request", notification);
+                }
+            });
             return;
         }
 
@@ -110,6 +124,8 @@ public class FriendRequestServiceImpl implements FriendRequestService {
         String message = request.getMessage();
 
         // 6. 事务提交后再推送 WebSocket 通知，确保接收方刷新时能查到已提交的数据
+        User target = userMapper.selectById(toAccount);
+        String targetName = target != null ? target.getName() : toAccount;
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
@@ -121,6 +137,15 @@ public class FriendRequestServiceImpl implements FriendRequestService {
                         .message(message)
                         .build();
                 messagingTemplate.convertAndSendToUser(toAccount, "/queue/friend-request", notification);
+
+                // 同时通知发起方本人（覆盖 LBU_agent 代替用户发请求的场景，刷新待处理发出列表）
+                FriendNotificationDto selfNotification = FriendNotificationDto.builder()
+                        .type("FRIEND_REQUEST_SENT")
+                        .requestId(requestId)
+                        .fromAccount(toAccount)
+                        .fromName(targetName)
+                        .build();
+                messagingTemplate.convertAndSendToUser(fromAccount, "/queue/friend-request", selfNotification);
                 log.info("好友请求已发送: {} -> {}, requestId={}", fromAccount, toAccount, requestId);
             }
         });
@@ -176,7 +201,18 @@ public class FriendRequestServiceImpl implements FriendRequestService {
                         .fromAccount(account)
                         .fromName(acceptorName)
                         .build();
+                // 通知请求发起方
                 messagingTemplate.convertAndSendToUser(fromAccount, "/queue/friend-request", notification);
+                // 同时通知接受方本人（覆盖 LBU_agent 代替用户接受请求的场景）
+                User requester = userMapper.selectById(fromAccount);
+                String requesterName = requester != null ? requester.getName() : fromAccount;
+                FriendNotificationDto selfNotification = FriendNotificationDto.builder()
+                        .type("FRIEND_ACCEPTED")
+                        .requestId(requestId)
+                        .fromAccount(fromAccount)
+                        .fromName(requesterName)
+                        .build();
+                messagingTemplate.convertAndSendToUser(account, "/queue/friend-request", selfNotification);
                 log.info("好友请求已接受: {} <-> {}, requestId={}", fromAccount, toAccount, requestId);
             }
         });
@@ -206,7 +242,18 @@ public class FriendRequestServiceImpl implements FriendRequestService {
                         .fromAccount(account)
                         .fromName(rejectorName)
                         .build();
+                // 通知请求发起方
                 messagingTemplate.convertAndSendToUser(fromAccount, "/queue/friend-request", notification);
+                // 同时通知拒绝方本人（覆盖 LBU_agent 代替用户拒绝请求的场景）
+                User requester = userMapper.selectById(fromAccount);
+                String requesterName = requester != null ? requester.getName() : fromAccount;
+                FriendNotificationDto selfNotification = FriendNotificationDto.builder()
+                        .type("FRIEND_REJECTED")
+                        .requestId(requestId)
+                        .fromAccount(fromAccount)
+                        .fromName(requesterName)
+                        .build();
+                messagingTemplate.convertAndSendToUser(account, "/queue/friend-request", selfNotification);
                 log.info("好友请求已拒绝: {} -> {}, requestId={}", fromAccount, toAccount, requestId);
             }
         });
