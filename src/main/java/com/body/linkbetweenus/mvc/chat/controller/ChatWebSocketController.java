@@ -44,8 +44,10 @@ public class ChatWebSocketController {
             log.warn("收到未认证的STOMP消息，已忽略");
             return;
         }
+        // 转发给 LBU_agent 通道用的用户 JWT（握手时由 AuthHandshakeInterceptor 存入）
+        String token = (String) headerAccessor.getSessionAttributes().get("token");
 
-        MessageVO vo = messageService.sendMessage(fromAccount, request);
+        MessageVO vo = messageService.sendMessage(fromAccount, request, token);
         log.debug("私聊消息已处理: {} -> {}, msgId={}", fromAccount, request.getToAccount(), vo.getId());
     }
 

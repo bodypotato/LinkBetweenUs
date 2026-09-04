@@ -49,6 +49,15 @@ dify:
   connect-timeout: 5s
   read-timeout: 60s
 
+# LBU_agent 独立助手配置（与 Dify 通道并存，互不影响）
+lbu-agent:
+  enabled: ${LBU_AGENT_ENABLED:true}
+  base-url: ${LBU_AGENT_BASE_URL:http://localhost:8000}
+  bot-account: ${LBU_AGENT_BOT_ACCOUNT:lbu_agent}
+  bot-name: ${LBU_AGENT_BOT_NAME:LBU助手}
+  connect-timeout: 5s
+  read-timeout: 180s
+
 server:
   port: 8080
 

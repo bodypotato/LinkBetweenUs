@@ -11,6 +11,7 @@ import com.body.linkbetweenus.entity.Message;
 import com.body.linkbetweenus.entity.User;
 import com.body.linkbetweenus.mvc.chat.service.MessageService;
 import com.body.linkbetweenus.mvc.ai.service.DifyService;
+import com.body.linkbetweenus.mvc.ai.agent.service.AgentService;
 import com.body.linkbetweenus.mvc.mapper.FriendMapper;
 import com.body.linkbetweenus.mvc.mapper.MessageMapper;
 import com.body.linkbetweenus.mvc.mapper.UserMapper;
@@ -38,10 +39,11 @@ public class MessageServiceImpl implements MessageService {
     private final OnlineStatusService onlineStatusService;
     private final SimpMessagingTemplate messagingTemplate;
     private final DifyService difyService;
+    private final AgentService agentService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public MessageVO sendMessage(String fromAccount, SendMessageRequest request) {
+    public MessageVO sendMessage(String fromAccount, SendMessageRequest request, String token) {
         String toAccount = request.getToAccount();
 
         // 1. 不能发给自己
@@ -56,7 +58,8 @@ public class MessageServiceImpl implements MessageService {
         }
 
         // 3. 必须先成为好友（AI 机器人除外）
-        if (!difyService.isAiBot(toAccount) && !isFriend(fromAccount, toAccount)) {
+        if (!difyService.isAiBot(toAccount) && !agentService.isAgentBot(toAccount)
+                && !isFriend(fromAccount, toAccount)) {
             throw new RuntimeException("你们还不是好友，无法发送消息");
         }
 
@@ -99,6 +102,14 @@ public class MessageServiceImpl implements MessageService {
                         difyService.handleBotMessageAsync(fromAccount, request.getContent());
                     } catch (Exception e) {
                         log.error("AI回复调度失败: user={}", fromAccount, e);
+                    }
+                }
+                // 发给 LBU_agent 机器人时异步调用独立 agent 服务（携带用户 token）
+                if (agentService.isAgentBot(toAccount)) {
+                    try {
+                        agentService.handleAgentMessageAsync(fromAccount, request.getContent(), token);
+                    } catch (Exception e) {
+                        log.error("LBU_agent回复调度失败: user={}", fromAccount, e);
                     }
                 }
             }

@@ -33,6 +33,8 @@ public class AuthHandshakeInterceptor implements HandshakeInterceptor {
             if (token != null && jwtUtil.validateTokenAndVersion(token)) {
                 String account = jwtUtil.getAccountFromToken(token);
                 attributes.put("account", account);
+                // 同时保存原始 token，供 LBU_agent 通道转发给 agent 服务（代替用户操作）
+                attributes.put("token", token);
                 log.debug("WebSocket handshake OK: account={}", account);
                 return true;
             }

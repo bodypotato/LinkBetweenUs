@@ -10,8 +10,10 @@ public interface MessageService {
 
     /**
      * 发送消息（持久化 + WebSocket 推送）
+     *
+     * @param token 发送方的 JWT（握手时保存的原始 token，发给 LBU_agent 时需转发，可为 null）
      */
-    MessageVO sendMessage(String fromAccount, SendMessageRequest request);
+    MessageVO sendMessage(String fromAccount, SendMessageRequest request, String token);
 
     /**
      * 获取与指定用户的聊天记录（分页，按时间正序）
